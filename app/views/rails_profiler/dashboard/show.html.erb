@@ -1,63 +1,307 @@
-<div class="profile-detail">
-  <h1>Profile Details</h1>
-  
-  <div class="profile-header">
-    <div class="profile-info">
-      <h3>Request ID: <%= @profile[:request_id] %></h3>
-      <p><strong>Started:</strong> <%= @profile[:started_at] %></p>
-      <p><strong>Duration:</strong> <%= @profile[:duration].round(2) %>ms</p>
-      <p><strong>Status:</strong> <%= @profile[:status] %></p>
+<div class="container profile-detail">
+  <div class="back-link">
+    <a href="<%= rails_profiler.profiles_path %>" class="btn btn-sm btn-outline-primary">
+      <i class="fas fa-arrow-left"></i> Back to Requests
+    </a>
+  </div>
+
+  <div class="dashboard-header">
+    <h1>
+      <%= @profile[:endpoint_name] || "Unknown Endpoint" %>
+      <small class="text-muted"><%= @profile[:method] %> <%= @profile[:path] %></small>
+    </h1>
+    
+    <div class="dashboard-actions">
+      <span class="status-badge status-<%= @profile[:status].to_s[0] %>00">
+        <%= @profile[:status] %>
+      </span>
     </div>
   </div>
 
-  <div class="profile-sections">
-    <div class="section">
-      <h3>Database Queries (<%= @profile[:queries].size %>)</h3>
-      <div class="queries-list">
-        <% @profile[:queries].each_with_index do |query, index| %>
-          <div class="query-item">
-            <div class="query-header">
-              <span class="query-number">#<%= index + 1 %></span>
-              <span class="query-duration"><%= query[:duration].round(2) %>ms</span>
-              <span class="query-name"><%= query[:name] %></span>
+  <div class="profile-meta">
+    <div class="meta-item">
+      <span class="meta-label">Request ID:</span>
+      <span><%= @profile[:request_id] %></span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Time:</span>
+      <span><%= @profile[:started_at].is_a?(String) ? @profile[:started_at] : @profile[:started_at].strftime("%Y-%m-%d %H:%M:%S") %></span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Duration:</span>
+      <span class="duration <%= @profile[:duration] > 1000 ? 'slow' : (@profile[:duration] > 500 ? 'medium' : 'fast') %>">
+        <%= @profile[:duration].round(2) %> ms
+      </span>
+    </div>
+    <% if @profile[:params].present? && !@profile[:params].empty? %>
+      <div class="meta-item">
+        <span class="meta-label">Parameters:</span>
+        <button class="btn btn-sm btn-outline-secondary" data-toggle="modal" data-target="#paramsModal">
+          View Params
+        </button>
+      </div>
+    <% end %>
+  </div>
+
+  <div class="timeline-section">
+    <h3 class="section-header">Request Timeline</h3>
+    
+    <div class="time-scale">
+      <span>0 ms</span>
+      <span><%= @profile[:duration].round %> ms</span>
+    </div>
+    
+    <div class="timeline-breakdown">
+      <div class="timeline-label">Total</div>
+      <div class="timeline-track">
+        <% if @profile[:db_time] %>
+          <div class="timeline-segment db-segment" style="width: <%= ((@profile[:db_time] / @profile[:duration]) * 100).round(1) %>%; left: <%= @profile[:db_offset] || 0 %>%;" title="Database: <%= @profile[:db_time].round(2) %> ms"></div>
+        <% end %>
+        
+        <% if @profile[:view_time] %>
+          <div class="timeline-segment view-segment" style="width: <%= ((@profile[:view_time] / @profile[:duration]) * 100).round(1) %>%; left: <%= @profile[:view_offset] || 0 %>%;" title="View: <%= @profile[:view_time].round(2) %> ms"></div>
+        <% end %>
+        
+        <% if @profile[:controller_time] %>
+          <div class="timeline-segment controller-segment" style="width: <%= ((@profile[:controller_time] / @profile[:duration]) * 100).round(1) %>%; left: <%= @profile[:controller_offset] || 0 %>%;" title="Controller: <%= @profile[:controller_time].round(2) %> ms"></div>
+        <% end %>
+        
+        <% if @profile[:ruby_time] %>
+          <div class="timeline-segment ruby-segment" style="width: <%= ((@profile[:ruby_time] / @profile[:duration]) * 100).round(1) %>%; left: <%= @profile[:ruby_offset] || 0 %>%;" title="Ruby: <%= @profile[:ruby_time].round(2) %> ms"></div>
+        <% end %>
+      </div>
+      <div class="timeline-duration">
+        <%= @profile[:duration].round(2) %> ms
+      </div>
+    </div>
+    
+    <div class="card mt-4">
+      <div class="card-header">
+        <h4 class="card-title">Time Breakdown</h4>
+      </div>
+      <div class="card-body">
+        <div class="stats-cards">
+          <% if @profile[:db_time] %>
+            <div class="stat-card">
+              <h3>Database Time</h3>
+              <div class="stat-value" style="color: var(--db-color);">
+                <%= @profile[:db_time].round(2) %> ms
+              </div>
+              <div class="mini-timeline">
+                <div class="segment db-segment" style="width: 100%;"></div>
+              </div>
+              <div class="stat-percentage mt-2">
+                <%= ((@profile[:db_time] / @profile[:duration]) * 100).round(1) %>% of request
+              </div>
             </div>
-            <div class="query-sql">
-              <code><%= query[:sql] %></code>
+          <% end %>
+
+          <% if @profile[:view_time] %>
+            <div class="stat-card">
+              <h3>View Time</h3>
+              <div class="stat-value" style="color: var(--view-color);">
+                <%= @profile[:view_time].round(2) %> ms
+              </div>
+              <div class="mini-timeline">
+                <div class="segment view-segment" style="width: 100%;"></div>
+              </div>
+              <div class="stat-percentage mt-2">
+                <%= ((@profile[:view_time] / @profile[:duration]) * 100).round(1) %>% of request
+              </div>
             </div>
-            <% if query[:backtrace] %>
-              <details class="query-backtrace">
-                <summary>Backtrace</summary>
-                <pre><%= query[:backtrace].join("\n") %></pre>
-              </details>
-            <% end %>
+          <% end %>
+
+          <% if @profile[:ruby_time] %>
+            <div class="stat-card">
+              <h3>Ruby Time</h3>
+              <div class="stat-value" style="color: var(--ruby-color);">
+                <%= @profile[:ruby_time].round(2) %> ms
+              </div>
+              <div class="mini-timeline">
+                <div class="segment ruby-segment" style="width: 100%;"></div>
+              </div>
+              <div class="stat-percentage mt-2">
+                <%= ((@profile[:ruby_time] / @profile[:duration]) * 100).round(1) %>% of request
+              </div>
+            </div>
+          <% end %>
+
+          <% if @profile[:controller_time] %>
+            <div class="stat-card">
+              <h3>Controller Time</h3>
+              <div class="stat-value" style="color: var(--controller-color);">
+                <%= @profile[:controller_time].round(2) %> ms
+              </div>
+              <div class="mini-timeline">
+                <div class="segment" style="width: 100%; background-color: var(--controller-color);"></div>
+              </div>
+              <div class="stat-percentage mt-2">
+                <%= ((@profile[:controller_time] / @profile[:duration]) * 100).round(1) %>% of request
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+    
+    <% if @profile[:detailed_segments].present? %>
+      <div class="detailed-timeline">
+        <h4 class="mb-3">Detailed View</h4>
+        
+        <% @profile[:detailed_segments].each do |segment| %>
+          <div class="timeline-breakdown">
+            <div class="timeline-label" title="<%= segment[:name] %>">
+              <%= segment[:name].truncate(20) %>
+            </div>
+            <div class="timeline-track">
+              <div class="timeline-segment" 
+                   style="width: <%= ((segment[:duration] / @profile[:duration]) * 100).round(1) %>%; 
+                          left: <%= ((segment[:start_time] / @profile[:duration]) * 100).round(1) %>%;
+                          background-color: <%= segment_color(segment[:type]) %>;"
+                   title="<%= segment[:name] %>: <%= segment[:duration].round(2) %> ms"></div>
+            </div>
+            <div class="timeline-duration">
+              <%= segment[:duration].round(2) %> ms
+            </div>
           </div>
         <% end %>
       </div>
-    </div>
+    <% end %>
+  </div>
 
-    <div class="section">
-      <h3>Code Profiles (<%= @profile.dig(:additional_data, :profiles)&.size || 0 %>)</h3>
-      <div class="profiles-list">
-        <% if @profile.dig(:additional_data, :profiles).present? %>
-          <% @profile[:additional_data][:profiles].each_with_index do |code_profile, index| %>
-            <div class="profile-item">
-              <div class="profile-header">
-                <span class="profile-number">#<%= index + 1 %></span>
-                <span class="profile-duration"><%= code_profile[:duration].round(2) %>ms</span>
-                <span class="profile-name"><%= code_profile[:name] %></span>
-              </div>
-              <% if code_profile[:backtrace] %>
-                <details class="profile-backtrace">
-                  <summary>Backtrace</summary>
-                  <pre><%= code_profile[:backtrace].join("\n") %></pre>
-                </details>
-              <% end %>
+  <% if @profile[:queries].present? %>
+    <div class="queries-section">
+      <div class="section-header">
+        <h2>Database Queries</h2>
+        <span class="text-muted"><%= @profile[:queries].size %> queries in <%= @profile[:db_time].round(2) %> ms</span>
+      </div>
+      
+      <% @profile[:queries].each_with_index do |query, index| %>
+        <div class="query-item">
+          <div class="query-header">
+            <span class="query-number">#<%= index + 1 %></span>
+            <span class="query-duration <%= query[:duration] > 100 ? 'text-danger' : (query[:duration] > 50 ? 'text-warning' : 'text-success') %>">
+              <%= query[:duration].round(2) %> ms
+            </span>
+            <span class="query-name">
+              <%= query[:name] || "SQL Query" %>
+            </span>
+          </div>
+          
+          <div class="query-sql">
+            <code><%= query[:sql] %></code>
+          </div>
+          
+          <% if query[:source].present? %>
+            <div class="query-source mt-2">
+              <small class="text-muted">Source: <%= query[:source].to_s %></small>
             </div>
           <% end %>
-        <% else %>
-          <p>No code profiles recorded for this request.</p>
-        <% end %>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+  
+  <% if @profile[:code_profiles].present? %>
+    <div class="code-profiles-section">
+      <div class="section-header">
+        <h2>Code Hotspots</h2>
+      </div>
+      
+      <div class="card">
+        <div class="card-body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Line</th>
+                <th>Method</th>
+                <th>Duration</th>
+                <th>% of Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @profile[:code_profiles].sort_by { |cp| -cp[:duration] }.each do |profile| %>
+                <tr>
+                  <td><%= profile[:file].to_s.split('/').last(2).join('/') %></td>
+                  <td><%= profile[:line] %></td>
+                  <td><code><%= profile[:method] %></code></td>
+                  <td>
+                    <span class="duration <%= profile[:duration] > 100 ? 'slow' : (profile[:duration] > 50 ? 'medium' : 'fast') %>">
+                      <%= profile[:duration].round(2) %> ms
+                    </span>
+                  </td>
+                  <td>
+                    <div class="progress" style="height: 6px; width: 100%;">
+                      <div class="progress-bar" role="progressbar" 
+                          style="width: <%= ((profile[:duration] / @profile[:duration]) * 100).round(1) %>%; 
+                                background-color: <%= profile[:duration] > 100 ? 'var(--danger-color)' : (profile[:duration] > 50 ? 'var(--warning-color)' : 'var(--success-color)') %>;"
+                          aria-valuenow="<%= ((profile[:duration] / @profile[:duration]) * 100).round(1) %>" 
+                          aria-valuemin="0" 
+                          aria-valuemax="100"></div>
+                    </div>
+                    <%= ((profile[:duration] / @profile[:duration]) * 100).round(1) %>%
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
-  </div>
+  <% end %>
+
+  <% if @profile[:params].present? && !@profile[:params].empty? %>
+    <div class="modal" id="paramsModal" tabindex="-1" aria-labelledby="paramsModalLabel" aria-hidden="true">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="paramsModalLabel">Request Parameters</h5>
+          <span class="close">&times;</span>
+        </div>
+        <div class="modal-body">
+          <pre class="params-display"><%= JSON.pretty_generate(@profile[:params].as_json) rescue @profile[:params].inspect %></pre>
+        </div>
+      </div>
+    </div>
+  <% end %>
 </div>
+
+<style>
+  .stat-percentage {
+    color: var(--gray-color);
+    font-size: 0.75rem;
+  }
+  
+  .progress {
+    background-color: #f3f4f6;
+    border-radius: 0.25rem;
+    overflow: hidden;
+  }
+  
+  .params-display {
+    background-color: #f9fafb;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    overflow-x: auto;
+    font-family: 'SF Mono', SFMono-Regular, ui-monospace, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: #374151;
+    max-height: 400px;
+  }
+  
+  .text-muted {
+    color: var(--gray-color);
+  }
+  
+  h1 small {
+    font-size: 1rem;
+    display: block;
+    margin-top: 0.25rem;
+    font-weight: normal;
+  }
+  
+  .back-link {
+    margin-bottom: 1.5rem;
+  }
+</style>

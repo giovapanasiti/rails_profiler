@@ -1,0 +1,135 @@
+<div class="endpoints-page">
+  <div class="dashboard-header">
+    <h1>Endpoints</h1>
+  </div>
+
+  <% if @selected_endpoint %>
+    <div class="endpoint-details">
+      <div class="back-button">
+        <a href="<%= rails_profiler.endpoints_path %>" class="btn btn-sm btn-outline-secondary">
+          <i class="fas fa-arrow-left"></i> Back to all endpoints
+        </a>
+      </div>
+      
+      <h2><%= @selected_endpoint %></h2>
+      
+      <% if @endpoint_profiles.present? %>
+        <div class="endpoint-stats">
+          <div class="stat-card">
+            <h3>Requests</h3>
+            <div class="stat-value"><%= @endpoint_profiles.size %></div>
+          </div>
+          <div class="stat-card">
+            <h3>Avg Duration</h3>
+            <div class="stat-value">
+              <%= (@endpoint_profiles.sum { |p| p[:duration] } / @endpoint_profiles.size).round(2) %> ms
+            </div>
+          </div>
+          <div class="stat-card">
+            <h3>Slowest</h3>
+            <div class="stat-value">
+              <%= @endpoint_profiles.map { |p| p[:duration] }.max.round(2) %> ms
+            </div>
+          </div>
+          <div class="stat-card">
+            <h3>Success Rate</h3>
+            <div class="stat-value">
+              <%= ((@endpoint_profiles.count { |p| p[:status].to_i < 400 }.to_f / @endpoint_profiles.size) * 100).round(1) %>%
+            </div>
+          </div>
+        </div>
+        
+        <h3>Request Traces</h3>
+        <div class="profiles-table">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Duration</th>
+                <th>DB Time</th>
+                <th>View Time</th>
+                <th>Ruby Time</th>
+                <th>Status</th>
+                <th>Time</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @endpoint_profiles.each do |profile| %>
+                <tr>
+                  <td>
+                    <span class="duration <%= profile[:duration] > 1000 ? 'slow' : (profile[:duration] > 500 ? 'medium' : 'fast') %>">
+                      <%= profile[:duration].round(2) %> ms
+                    </span>
+                    
+                    <div class="mini-timeline">
+                      <div class="segment db-segment" style="width: <%= ((profile[:db_time] / profile[:duration]) * 100).round(1) %>%"></div>
+                      <div class="segment view-segment" style="width: <%= ((profile[:view_time] / profile[:duration]) * 100).round(1) %>%"></div>
+                      <div class="segment ruby-segment" style="width: <%= ((profile[:ruby_time] / profile[:duration]) * 100).round(1) %>%"></div>
+                    </div>
+                  </td>
+                  <td><%= profile[:db_time].round(2) %> ms</td>
+                  <td><%= profile[:view_time].round(2) %> ms</td>
+                  <td><%= profile[:ruby_time].round(2) %> ms</td>
+                  <td>
+                    <span class="status-badge status-<%= profile[:status].to_s[0] %>00">
+                      <%= profile[:status] %>
+                    </span>
+                  </td>
+                  <td><%= profile[:started_at].is_a?(String) ? profile[:started_at] : profile[:started_at].strftime("%H:%M:%S") %></td>
+                  <td>
+                    <%= link_to "View", rails_profiler.profile_path(profile[:request_id]), class: "btn btn-sm btn-primary" %>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% else %>
+        <div class="no-data">
+          <p>No profiles found for this endpoint.</p>
+        </div>
+      <% end %>
+    </div>
+  <% else %>
+    <div class="endpoints-list">
+      <% @endpoints.each do |endpoint| %>
+        <div class="endpoint-card">
+          <div class="endpoint-header">
+            <h3 class="endpoint-name">
+              <a href="<%= rails_profiler.endpoints_path(endpoint: endpoint[:name]) %>">
+                <%= endpoint[:name] %>
+              </a>
+            </h3>
+            <div class="endpoint-meta">
+              <span class="endpoint-count"><%= endpoint[:count] %> requests</span>
+              <span class="endpoint-time"><%= endpoint[:avg_duration].round(2) %> ms avg</span>
+            </div>
+          </div>
+          
+          <div class="endpoint-timeline">
+            <% endpoint[:segments].each do |segment| %>
+              <div class="segment" 
+                   style="width: <%= segment[:percentage].round(1) %>%; background-color: <%= segment[:color] %>;"
+                   title="<%= segment[:name] %>: <%= segment[:percentage].round(1) %>%"></div>
+            <% end %>
+          </div>
+          
+          <div class="endpoint-breakdown">
+            <div class="breakdown-item">
+              <span class="breakdown-label">Database</span>
+              <span class="breakdown-value"><%= endpoint[:avg_db_time].round(1) %> ms</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="breakdown-label">View</span>
+              <span class="breakdown-value"><%= endpoint[:avg_view_time].round(1) %> ms</span>
+            </div>
+            <div class="breakdown-item">
+              <span class="breakdown-label">Ruby</span>
+              <span class="breakdown-value"><%= endpoint[:avg_ruby_time].round(1) %> ms</span>
+            </div>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+</div>

@@ -7,6 +7,26 @@ require "rails_profiler/query_tracker"
 require "rails_profiler/code_profiler"
 require "rails_profiler/storage"
 
+# Add detection of mount path
+module ActionDispatch
+  module Routing
+    class Mapper
+      # Store original mount method
+      alias_method :original_mount, :mount
+
+      # Override mount method to detect Rails Profiler mounting
+      def mount(app, options = nil)
+        if app == RailsProfiler::Engine
+          path = options[:at] || '/'
+          RailsProfiler::Engine.mount_path = path
+          puts "[RailsProfiler] Detected engine mount at: #{path}"
+        end
+        original_mount(app, options)
+      end
+    end
+  end
+end
+
 module RailsProfiler
   class << self
     def configure
@@ -47,6 +67,10 @@ module RailsProfiler
 
     def current_profiler
       Thread.current[:rails_profiler_current]
+    end
+
+    def engine_mount_path
+      RailsProfiler::Engine.mount_path || '/profiler'
     end
 
     private

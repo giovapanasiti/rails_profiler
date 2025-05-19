@@ -3,6 +3,10 @@ require "rails"
 module RailsProfiler
   class Engine < ::Rails::Engine
     isolate_namespace RailsProfiler
+    
+    # Class variable to store the engine's mount path
+    cattr_accessor :mount_path
+    self.mount_path = nil
 
     # Insert middleware earlier in the initialization process
     initializer "rails_profiler.insert_middleware", before: :load_config_initializers do |app|

@@ -126,15 +126,24 @@ module RailsProfiler
         url: data[:url],
         method: data[:method],
         path: data[:path],
+        controller: data[:controller],
+        action: data[:action],
+        endpoint_name: data[:endpoint_name],
         format: data[:format],
         status: data[:status],
         duration: data[:duration],
         query_count: data[:query_count],
         total_query_time: data[:total_query_time],
+        view_time: data[:view_time],
+        db_time: data[:db_time],
+        ruby_time: data[:ruby_time],
         started_at: data[:started_at],
         queries: data[:queries].to_json,
+        segments: data[:segments].to_json,
         additional_data: data[:additional_data].to_json
       }
+
+      return if data[:status] < 100
 
       # Find existing record or create new one
       profile = Profile.find_or_initialize_by(request_id: data[:request_id])
@@ -149,13 +158,20 @@ module RailsProfiler
           url: profile.url,
           method: profile.method,
           path: profile.path,
+          controller: profile.controller,
+          action: profile.action,
+          endpoint_name: profile.endpoint_name,
           format: profile.format,
           status: profile.status,
           duration: profile.duration,
           query_count: profile.query_count,
           total_query_time: profile.total_query_time,
+          view_time: profile.view_time,
+          db_time: profile.db_time,
+          ruby_time: profile.ruby_time,
           started_at: profile.started_at,
           queries: JSON.parse(profile.queries, symbolize_names: true),
+          segments: JSON.parse(profile.segments, symbolize_names: true),
           additional_data: JSON.parse(profile.additional_data, symbolize_names: true)
         }
       end
@@ -171,22 +187,32 @@ module RailsProfiler
         url: profile.url,
         method: profile.method,
         path: profile.path,
+        controller: profile.controller,
+        action: profile.action,
+        endpoint_name: profile.endpoint_name,
         format: profile.format,
         status: profile.status,
         duration: profile.duration,
         query_count: profile.query_count,
         total_query_time: profile.total_query_time,
+        view_time: profile.view_time,
+        db_time: profile.db_time,
+        ruby_time: profile.ruby_time,
         started_at: profile.started_at,
         queries: JSON.parse(profile.queries, symbolize_names: true),
+        segments: JSON.parse(profile.segments, symbolize_names: true),
         additional_data: JSON.parse(profile.additional_data, symbolize_names: true)
       }
     end
 
     def self.get_summary_stats
       total_profiles = Profile.count
-      latest_profiles = get_profiles(limit: 100)
+      latest_profiles = get_profiles(limit: 50)
       
       return {} if latest_profiles.empty?
+      
+      # Aggregate endpoints like Skylight does
+      endpoints = aggregate_endpoints
 
       avg_duration = Profile.average(:duration).to_f
       avg_queries = Profile.average(:query_count).to_f
@@ -197,8 +223,79 @@ module RailsProfiler
         avg_duration: avg_duration,
         avg_queries: avg_queries,
         avg_query_time: avg_query_time,
-        latest_profiles: latest_profiles.first(20)
+        endpoints: endpoints,
+        latest_profiles: latest_profiles
       }
+    end
+    
+    # Similar to Skylight's endpoint aggregation
+    def self.aggregate_endpoints
+      # Group by endpoint_name and get performance metrics
+      endpoint_stats = Profile.where.not(endpoint_name: nil)
+                              .group(:endpoint_name)
+                              .select(
+                                "endpoint_name, 
+                                COUNT(*) as request_count, 
+                                AVG(duration) as avg_duration, 
+                                MAX(duration) as max_duration,
+                                AVG(db_time) as avg_db_time,
+                                AVG(view_time) as avg_view_time,
+                                AVG(ruby_time) as avg_ruby_time"
+                              )
+                              
+      # Convert to the format needed for the UI
+      endpoints = endpoint_stats.map do |stat|
+        {
+          name: stat.endpoint_name,
+          count: stat.request_count,
+          avg_duration: stat.avg_duration,
+          max_duration: stat.max_duration,
+          avg_db_time: stat.avg_db_time,
+          avg_view_time: stat.avg_view_time,
+          avg_ruby_time: stat.avg_ruby_time,
+          # Calculate percentages for the segments visualization
+          segments: [
+            { name: "Database", percentage: (stat.avg_db_time / stat.avg_duration) * 100, color: "blue" },
+            { name: "View", percentage: (stat.avg_view_time / stat.avg_duration) * 100, color: "green" },
+            { name: "Ruby", percentage: (stat.avg_ruby_time / stat.avg_duration) * 100, color: "purple" }
+          ]
+        }
+      end
+      
+      # Sort by average duration (slowest first)
+      endpoints.sort_by { |e| -e[:avg_duration] }
+    end
+    
+    # Get time-series data for trend charts
+    def self.get_trends(days: 7)
+      start_date = days.days.ago.beginning_of_day
+      
+      # Group by hour and count requests
+      hourly_counts = Profile.where("started_at >= ?", start_date)
+                            .group("date_trunc('hour', started_at)")
+                            .count
+                            
+      # Calculate average durations by hour
+      hourly_durations = Profile.where("started_at >= ?", start_date)
+                               .group("date_trunc('hour', started_at)")
+                               .average(:duration)
+                               
+      # Merge into a single dataset for charting
+      hourly_data = []
+      
+      # Combine counts and durations
+      (start_date.to_i..Time.current.to_i).step(1.hour) do |timestamp|
+        datetime = Time.at(timestamp)
+        hour_key = datetime.utc.change(min: 0, sec: 0)
+        
+        hourly_data << {
+          timestamp: datetime.to_i * 1000, # Convert to milliseconds for JS charts
+          count: hourly_counts[hour_key] || 0,
+          avg_duration: hourly_durations[hour_key] || 0
+        }
+      end
+      
+      hourly_data
     end
     
     # Helper method to clean up old profiles based on retention days

@@ -10,6 +10,7 @@
             <th>Method</th>
             <th>Status</th>
             <th>Duration (ms)</th>
+            <th>Content</th>
             <th>Queries</th>
             <th>Query Time (ms)</th>
             <th>Time</th>
@@ -21,11 +22,42 @@
             <tr>
               <td><%= profile[:path] %></td>
               <td><%= profile[:method] %></td>
-              <td><%= profile[:status] %></td>
+              <td>
+                <span class="status-badge status-<%= profile[:status].to_s[0] %>00">
+                  <%= profile[:status] %>
+                </span>
+              </td>
               <td><%= profile[:duration].round(2) %></td>
+              <td>
+                <% if profile[:queries].present? && profile[:queries].any? %>
+                  <span class="badge bg-info text-white" title="Contains <%= profile[:queries].size %> SQL queries">
+                    <i class="fas fa-database"></i> <%= profile[:queries].size %> SQL
+                  </span>
+                <% end %>
+                
+                <% 
+                  code_profiles = if profile[:additional_data].is_a?(Hash) && profile[:additional_data][:profiles].is_a?(Array)
+                                    profile[:additional_data][:profiles]
+                                  else
+                                    []
+                                  end
+                %>
+                
+                <% if code_profiles.present? %>
+                  <span class="badge bg-purple text-white" title="Contains <%= code_profiles.size %> code profiles">
+                    <i class="fas fa-code"></i> <%= code_profiles.size %> Code
+                  </span>
+                <% end %>
+                
+                <% if profile[:status] && profile[:status] >= 400 %>
+                  <span class="badge bg-danger text-white" title="Contains errors">
+                    <i class="fas fa-exclamation-triangle"></i> Error
+                  </span>
+                <% end %>
+              </td>
               <td><%= profile[:query_count] %></td>
               <td><%= profile[:total_query_time].round(2) %></td>
-              <td><%= profile[:started_at].strftime("%H:%M:%S") %></td>
+              <td><%= profile[:started_at].is_a?(String) ? profile[:started_at] : profile[:started_at].strftime("%H:%M:%S") %></td>
               <td>
                 <%= link_to "View", rails_profiler.profile_path(profile[:request_id]), class: "btn btn-sm btn-primary" %>
               </td>

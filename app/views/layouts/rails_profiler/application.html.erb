@@ -1,228 +1,728 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <title>Rails Profiler Dashboard</title>
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <%= csrf_meta_tags %>
-    <%= csp_meta_tag %>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rails Profiler</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      /* Main colors */
+      --primary-color: #4f46e5;
+      --primary-dark: #3730a3;
+      --primary-light: #a5b4fc;
+      --secondary-color: #14b8a6;
+      --gray-color: #6b7280;
+      --light-gray: #f3f4f6;
+      --dark-gray: #374151;
+      --black: #111827;
+      --white: #ffffff;
+      
+      /* Status colors */
+      --success-color: #10b981;
+      --warning-color: #f59e0b;
+      --danger-color: #ef4444;
+      
+      /* Specific component colors */
+      --db-color: #0ea5e9;
+      --view-color: #ec4899;
+      --ruby-color: #8b5cf6;
+      --controller-color: #f59e0b;
+
+      /* Fonts */
+      --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
     
-    <style>
-      body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  margin: 0;
-  padding: 0;
-  background-color: #f8f9fa;
-}
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-.navbar {
-  background-color: #343a40;
-  color: white;
-  padding: 1rem 0;
-}
+    body {
+      font-family: var(--font-sans);
+      color: var(--dark-gray);
+      background-color: #f9fafb;
+      font-size: 14px;
+      line-height: 1.5;
+    }
 
-.navbar .container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 1rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
+    /* Layout */
+    .app-container {
+      display: flex;
+      min-height: 100vh;
+    }
 
-.navbar-brand {
-  color: white;
-  text-decoration: none;
-  font-size: 1.5rem;
-  font-weight: bold;
-}
+    .sidebar {
+      background-color: var(--white);
+      width: 240px;
+      flex-shrink: 0;
+      border-right: 1px solid #e5e7eb;
+      position: fixed;
+      height: 100vh;
+      overflow-y: auto;
+    }
 
-.navbar-nav {
-  display: flex;
-  gap: 1rem;
-}
+    .content-wrapper {
+      flex-grow: 1;
+      margin-left: 240px;
+      padding: 2rem;
+    }
 
-.nav-link {
-  color: #adb5bd;
-  text-decoration: none;
-  padding: 0.5rem 1rem;
-  border-radius: 0.25rem;
-  transition: color 0.15s;
-}
+    .logo {
+      padding: 1.5rem;
+      display: flex;
+      align-items: center;
+      border-bottom: 1px solid #e5e7eb;
+    }
 
-.nav-link:hover {
-  color: white;
-  background-color: #495057;
-}
+    .logo-text {
+      font-weight: 600;
+      font-size: 1.25rem;
+      color: var(--primary-color);
+      margin-left: 0.5rem;
+    }
 
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 2rem 1rem;
-}
+    .nav-menu {
+      padding: 1rem 0;
+    }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
+    .nav-section {
+      margin-bottom: 1rem;
+    }
 
-.stat-card {
-  background: white;
-  border-radius: 0.5rem;
-  padding: 1.5rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
+    .nav-section-title {
+      padding: 0.5rem 1.5rem;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      font-weight: 600;
+      color: var(--gray-color);
+      letter-spacing: 0.05em;
+    }
 
-.stat-card h3 {
-  margin: 0 0 0.5rem 0;
-  color: #6c757d;
-  font-size: 0.875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
+    .nav-link {
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      color: var(--dark-gray);
+      text-decoration: none;
+      font-weight: 500;
+      transition: background-color 0.2s ease-in-out;
+    }
 
-.stat-value {
-  font-size: 2rem;
-  font-weight: bold;
-  color: #343a40;
-}
+    .nav-link:hover {
+      background-color: #f9fafb;
+      color: var(--primary-color);
+    }
 
-.profiles-table {
-  background: white;
-  border-radius: 0.5rem;
-  overflow: hidden;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
+    .nav-link.active {
+      color: var(--primary-color);
+      background-color: rgba(79, 70, 229, 0.08);
+      border-left: 3px solid var(--primary-color);
+      padding-left: calc(1.5rem - 3px);
+    }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
+    .nav-link i {
+      width: 20px;
+      margin-right: 0.75rem;
+    }
 
-th, td {
-  padding: 0.75rem;
-  text-align: left;
-  border-bottom: 1px solid #dee2e6;
-}
+    /* Container */
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
 
-th {
-  background-color: #f8f9fa;
-  font-weight: 600;
-}
+    /* Cards */
+    .card {
+      background-color: var(--white);
+      border-radius: 0.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+      margin-bottom: 1.5rem;
+    }
 
-.status-badge {
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
+    .card-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
 
-.status-200 { background-color: #d4edda; color: #155724; }
-.status-300 { background-color: #ffeaa7; color: #856404; }
-.status-400 { background-color: #f8d7da; color: #721c24; }
-.status-500 { background-color: #f5c6cb; color: #721c24; }
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--black);
+      margin: 0;
+    }
 
-.btn {
-  padding: 0.375rem 0.75rem;
-  border: 1px solid #ccc;
-  border-radius: 0.25rem;
-  background-color: white;
-  color: #495057;
-  text-decoration: none;
-  transition: all 0.15s;
-}
+    .card-body {
+      padding: 1.5rem;
+    }
 
-.btn:hover {
-  background-color: #f8f9fa;
-  border-color: #adb5bd;
-}
+    /* Tables */
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+    }
 
-.btn-sm {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.875rem;
-}
+    .table th,
+    .table td {
+      padding: 0.75rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+    }
 
-.query-item, .profile-item {
-  background: white;
-  border-radius: 0.5rem;
-  padding: 1rem;
-  margin-bottom: 1rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
+    .table th {
+      font-weight: 600;
+      font-size: 0.875rem;
+      color: var(--gray-color);
+    }
 
-.query-header, .profile-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 0.5rem;
-}
+    .table tbody tr:last-child td {
+      border-bottom: none;
+    }
 
-.query-number, .profile-number {
-  background-color: #007bff;
-  color: white;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.875rem;
-  font-weight: bold;
-}
+    .table tbody tr:hover {
+      background-color: #f9fafb;
+    }
 
-.query-duration, .profile-duration {
-  background-color: #28a745;
-  color: white;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.875rem;
-  font-weight: bold;
-}
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.5rem 1rem;
+      font-weight: 500;
+      border-radius: 0.375rem;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s ease-in-out;
+      border: 1px solid transparent;
+    }
 
-.query-sql {
-  background-color: #f8f9fa;
-  border-radius: 0.25rem;
-  padding: 1rem;
-  overflow-x: auto;
-}
+    .btn-sm {
+      padding: 0.375rem 0.75rem;
+      font-size: 0.875rem;
+      border-radius: 0.25rem;
+    }
 
-.query-sql code {
-  color: #495057;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-}
+    .btn-primary {
+      background-color: var(--primary-color);
+      color: var(--white);
+    }
 
-details {
-  margin-top: 0.5rem;
-}
+    .btn-primary:hover {
+      background-color: var(--primary-dark);
+    }
 
-summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: #007bff;
-}
+    .btn-outline-primary {
+      border-color: var(--primary-color);
+      color: var(--primary-color);
+      background-color: transparent;
+    }
 
-pre {
-  background-color: #f8f9fa;
-  padding: 0.5rem;
-  border-radius: 0.25rem;
-  overflow-x: auto;
-  font-size: 0.875rem;
-}
-    </style>
+    .btn-outline-primary:hover {
+      background-color: rgba(79, 70, 229, 0.08);
+    }
 
-  </head>
+    .btn-outline-secondary {
+      border-color: #cbd5e1;
+      color: var(--gray-color);
+      background-color: transparent;
+    }
 
-  <body>
-    <nav class="navbar">
-      <div class="container">
-        <%= link_to "Rails Profiler", rails_profiler.root_path, class: "navbar-brand" %>
-        <div class="navbar-nav">
-          <%= link_to "Dashboard", rails_profiler.root_path, class: "nav-link" %>
-          <%= link_to "All Profiles", rails_profiler.profiles_path, class: "nav-link" %>
-          <%= link_to "Slowest Queries", rails_profiler.slowest_queries_path, class: "nav-link" %>
+    .btn-outline-secondary:hover {
+      background-color: #f3f4f6;
+    }
+
+    /* Dashboard */
+    .dashboard-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+    }
+
+    .dashboard-header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--black);
+    }
+
+    .dashboard-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .stats-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+
+    .stat-card {
+      background-color: var(--white);
+      border-radius: 0.5rem;
+      padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+    }
+
+    .stat-card h3 {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--gray-color);
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--black);
+      margin-bottom: 0.5rem;
+    }
+
+    /* Profiles */
+    .profile-list {
+      background-color: var(--white);
+      border-radius: 0.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+    }
+
+    .profile-item {
+      padding: 1rem;
+      border-bottom: 1px solid #e5e7eb;
+      transition: background-color 0.2s ease-in-out;
+    }
+
+    .profile-item:last-child {
+      border-bottom: none;
+    }
+
+    .profile-item:hover {
+      background-color: #f9fafb;
+    }
+
+    .profile-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .profile-endpoint {
+      font-weight: 600;
+      color: var(--black);
+    }
+
+    .profile-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .meta-label {
+      font-weight: 500;
+      color: var(--gray-color);
+    }
+
+    .duration {
+      font-weight: 600;
+      border-radius: 1rem;
+      padding: 0.125rem 0.5rem;
+      font-size: 0.875rem;
+    }
+
+    .duration.slow {
+      background-color: rgba(239, 68, 68, 0.1);
+      color: var(--danger-color);
+    }
+
+    .duration.medium {
+      background-color: rgba(245, 158, 11, 0.1);
+      color: var(--warning-color);
+    }
+
+    .duration.fast {
+      background-color: rgba(16, 185, 129, 0.1);
+      color: var(--success-color);
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+    }
+
+    .status-200 {
+      background-color: rgba(16, 185, 129, 0.1);
+      color: var(--success-color);
+    }
+
+    .status-300 {
+      background-color: rgba(14, 165, 233, 0.1);
+      color: var(--db-color);
+    }
+
+    .status-400, .status-500 {
+      background-color: rgba(239, 68, 68, 0.1);
+      color: var(--danger-color);
+    }
+
+    /* Timeline */
+    .timeline-section {
+      margin-bottom: 2rem;
+    }
+
+    .section-header {
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .section-header h2, 
+    .section-header h3, 
+    .section-header h4 {
+      font-weight: 600;
+      color: var(--black);
+      margin: 0;
+    }
+
+    .time-scale {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+      font-size: 0.75rem;
+      color: var(--gray-color);
+    }
+
+    .timeline-breakdown {
+      display: grid;
+      grid-template-columns: 120px 1fr 60px;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+      align-items: center;
+    }
+
+    .timeline-label {
+      font-size: 0.875rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .timeline-track {
+      height: 24px;
+      background-color: #f3f4f6;
+      border-radius: 4px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .timeline-segment {
+      position: absolute;
+      height: 100%;
+      top: 0;
+      min-width: 1px;
+    }
+
+    .db-segment {
+      background-color: var(--db-color);
+    }
+
+    .view-segment {
+      background-color: var(--view-color);
+    }
+
+    .controller-segment {
+      background-color: var(--controller-color);
+    }
+
+    .ruby-segment {
+      background-color: var(--ruby-color);
+    }
+
+    .timeline-duration {
+      text-align: right;
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .mini-timeline {
+      height: 6px;
+      background-color: #f3f4f6;
+      border-radius: 3px;
+      position: relative;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+
+    .segment {
+      height: 100%;
+    }
+
+    /* Queries section */
+    .queries-section {
+      margin-bottom: 2rem;
+    }
+
+    .query-item {
+      background-color: var(--white);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .query-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 0.75rem;
+      gap: 0.75rem;
+    }
+
+    .query-number {
+      font-weight: 600;
+      color: var(--gray-color);
+      background-color: #f3f4f6;
+      border-radius: 0.25rem;
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+    }
+
+    .query-duration {
+      font-weight: 600;
+      font-size: 0.875rem;
+    }
+
+    .query-name {
+      font-weight: 500;
+      font-size: 0.875rem;
+    }
+
+    .query-sql {
+      background-color: #f3f4f6;
+      padding: 0.75rem;
+      border-radius: 0.375rem;
+      font-family: 'SF Mono', SFMono-Regular, ui-monospace, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.75rem;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: var(--dark-gray);
+    }
+
+    .text-danger {
+      color: var(--danger-color);
+    }
+
+    .text-warning {
+      color: var(--warning-color);
+    }
+
+    .text-success {
+      color: var(--success-color);
+    }
+
+    /* Modals */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+
+    .modal-content {
+      background-color: #fefefe;
+      margin: 10% auto;
+      max-width: 600px;
+      width: 90%;
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .modal-header {
+      padding: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .modal-body {
+      padding: 1rem;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+
+    .close {
+      cursor: pointer;
+      font-size: 1.5rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 64px;
+      }
+      
+      .content-wrapper {
+        margin-left: 64px;
+      }
+      
+      .logo-text {
+        display: none;
+      }
+      
+      .nav-link span {
+        display: none;
+      }
+      
+      .nav-section-title {
+        display: none;
+      }
+      
+      .nav-link {
+        justify-content: center;
+        padding: 0.75rem;
+      }
+      
+      .nav-link i {
+        margin-right: 0;
+      }
+      
+      .stats-cards {
+        grid-template-columns: 1fr;
+      }
+      
+      .timeline-breakdown {
+        grid-template-columns: 80px 1fr 50px;
+      }
+    }
+    
+    /* Utility classes */
+    .mt-1 { margin-top: 0.25rem; }
+    .mt-2 { margin-top: 0.5rem; }
+    .mt-3 { margin-top: 0.75rem; }
+    .mt-4 { margin-top: 1rem; }
+    .mb-1 { margin-bottom: 0.25rem; }
+    .mb-2 { margin-bottom: 0.5rem; }
+    .mb-3 { margin-bottom: 0.75rem; }
+    .mb-4 { margin-bottom: 1rem; }
+  </style>
+  <%= yield :head %>
+</head>
+<body>
+  <div class="app-container">
+    <div class="sidebar">
+      <div class="logo">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="logo-icon" style="color: var(--primary-color);">
+          <path d="M12 2v4"></path>
+          <path d="M12 18v4"></path>
+          <path d="m4.93 4.93 2.83 2.83"></path>
+          <path d="m16.24 16.24 2.83 2.83"></path>
+          <path d="M2 12h4"></path>
+          <path d="M18 12h4"></path>
+          <path d="m4.93 19.07 2.83-2.83"></path>
+          <path d="m16.24 7.76 2.83-2.83"></path>
+        </svg>
+        <span class="logo-text">Rails Profiler</span>
+      </div>
+      
+      <div class="nav-menu">
+        <div class="nav-section">
+          <div class="nav-section-title">Dashboard</div>
+          <a href="<%= rails_profiler.root_path %>" class="nav-link <%= request.path == rails_profiler.root_path ? 'active' : '' %>">
+            <i class="fas fa-chart-line"></i>
+            <span>Overview</span>
+          </a>
+          <a href="<%= rails_profiler.profiles_path %>" class="nav-link <%= request.path == rails_profiler.profiles_path ? 'active' : '' %>">
+            <i class="fas fa-list"></i>
+            <span>Requests</span>
+          </a>
+          <a href="<%= rails_profiler.endpoints_path %>" class="nav-link <%= request.path == rails_profiler.endpoints_path ? 'active' : '' %>">
+            <i class="fas fa-sitemap"></i>
+            <span>Endpoints</span>
+          </a>
+          <a href="<%= rails_profiler.slowest_queries_path %>" class="nav-link <%= request.path == rails_profiler.slowest_queries_path ? 'active' : '' %>">
+            <i class="fas fa-database"></i>
+            <span>Slow Queries</span>
+          </a>
+          <a href="<%= rails_profiler.trends_path %>" class="nav-link <%= request.path == rails_profiler.trends_path ? 'active' : '' %>">
+            <i class="fas fa-chart-bar"></i>
+            <span>Trends</span>
+          </a>
+        </div>
+        
+        <div class="nav-section">
+          <div class="nav-section-title">Settings</div>
+          <a href="#" class="nav-link">
+            <i class="fas fa-cog"></i>
+            <span>Configuration</span>
+          </a>
+          <a href="#" class="nav-link">
+            <i class="fas fa-question-circle"></i>
+            <span>Help</span>
+          </a>
         </div>
       </div>
-    </nav>
-
-    <div class="container">
+    </div>
+    
+    <div class="content-wrapper">
       <%= yield %>
     </div>
-  </body>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Handle modal functionality
+      const modalTriggers = document.querySelectorAll('[data-toggle="modal"]');
+      modalTriggers.forEach(function(trigger) {
+        trigger.addEventListener('click', function() {
+          const target = document.querySelector(this.dataset.target);
+          if (target) {
+            target.style.display = "block";
+          }
+        });
+      });
+      
+      const modalCloses = document.querySelectorAll('.close');
+      modalCloses.forEach(function(close) {
+        close.addEventListener('click', function() {
+          const modal = this.closest('.modal');
+          if (modal) {
+            modal.style.display = "none";
+          }
+        });
+      });
+
+      // Close modal when clicking outside
+      window.addEventListener('click', function(event) {
+        if (event.target.classList.contains('modal')) {
+          event.target.style.display = "none";
+        }
+      });
+    });
+  </script>
+  
+  <%= yield :scripts %>
+</body>
 </html>

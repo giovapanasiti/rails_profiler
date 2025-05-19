@@ -1,58 +1,346 @@
-<div class="dashboard">
-  <h1>Rails Profiler Dashboard</h1>
-
-  <div class="stats-grid">
+<div class="container">
+  <div class="dashboard-header">
+    <h1>Application Performance</h1>
+    <div class="dashboard-actions">
+      <div class="btn-group" role="group">
+        <a href="<%= rails_profiler.root_path(period: 'hour') %>" class="btn <%= params[:period] == 'hour' ? 'btn-primary' : 'btn-outline-primary' %>">Hour</a>
+        <a href="<%= rails_profiler.root_path(period: 'day') %>" class="btn <%= params[:period].blank? || params[:period] == 'day' ? 'btn-primary' : 'btn-outline-primary' %>">Day</a>
+        <a href="<%= rails_profiler.root_path(period: 'week') %>" class="btn <%= params[:period] == 'week' ? 'btn-primary' : 'btn-outline-primary' %>">Week</a>
+      </div>
+    </div>
+  </div>
+  
+  <div class="stats-cards">
     <div class="stat-card">
-      <h3>Total Profiles</h3>
+      <h3>Total Requests</h3>
       <div class="stat-value"><%= @stats[:total_profiles] || 0 %></div>
+      <% if @stats[:request_change].present? %>
+        <div class="stat-trend <%= @stats[:request_change] >= 0 ? 'trend-up' : 'trend-down' %>">
+          <i class="fas <%= @stats[:request_change] >= 0 ? 'fa-arrow-up' : 'fa-arrow-down' %>"></i>
+          <%= @stats[:request_change].abs %>%
+        </div>
+      <% end %>
     </div>
+    
     <div class="stat-card">
-      <h3>Avg Response Time</h3>
-      <div class="stat-value"><%= (@stats[:avg_duration] || 0).round(2) %>ms</div>
+      <h3>Average Response</h3>
+      <div class="stat-value"><%= (@stats[:avg_duration] || 0).round(2) %> ms</div>
+      <% if @stats[:response_change].present? %>
+        <div class="stat-trend <%= @stats[:response_change] <= 0 ? 'trend-up' : 'trend-down' %>">
+          <i class="fas <%= @stats[:response_change] <= 0 ? 'fa-arrow-up' : 'fa-arrow-down' %>"></i>
+          <%= @stats[:response_change].abs %>%
+        </div>
+      <% end %>
     </div>
+    
     <div class="stat-card">
-      <h3>Avg Queries</h3>
+      <h3>Average Queries</h3>
       <div class="stat-value"><%= (@stats[:avg_queries] || 0).round(1) %></div>
+      <% if @stats[:query_count_change].present? %>
+        <div class="stat-trend <%= @stats[:query_count_change] <= 0 ? 'trend-up' : 'trend-down' %>">
+          <i class="fas <%= @stats[:query_count_change] <= 0 ? 'fa-arrow-up' : 'fa-arrow-down' %>"></i>
+          <%= @stats[:query_count_change].abs %>%
+        </div>
+      <% end %>
     </div>
+    
     <div class="stat-card">
-      <h3>Avg Query Time</h3>
-      <div class="stat-value"><%= (@stats[:avg_query_time] || 0).round(2) %>ms</div>
+      <h3>Average Query Time</h3>
+      <div class="stat-value"><%= (@stats[:avg_query_time] || 0).round(2) %> ms</div>
+      <% if @stats[:query_time_change].present? %>
+        <div class="stat-trend <%= @stats[:query_time_change] <= 0 ? 'trend-up' : 'trend-down' %>">
+          <i class="fas <%= @stats[:query_time_change] <= 0 ? 'fa-arrow-up' : 'fa-arrow-down' %>"></i>
+          <%= @stats[:query_time_change].abs %>%
+        </div>
+      <% end %>
     </div>
   </div>
 
-  <div class="recent-profiles">
-    <h2>Recent Profiles</h2>
-    <div class="profiles-table">
-      <table>
-        <thead>
-          <tr>
-            <th>Request ID</th>
-            <th>Started At</th>
-            <th>Duration</th>
-            <th>Queries</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% @profiles.each do |profile| %>
-            <tr>
-              <td><%= profile[:request_id][0..8] %>...</td>
-              <td><%= profile[:started_at] %></td>
-              <td><%= profile[:duration].round(2) %>ms</td>
-              <td><%= profile[:query_count] %></td>
-              <td>
-                <span class="status-badge status-<%= profile[:response_status] %>">
-                  <%= profile[:response_status] %>
-                </span>
-              </td>
-              <td>
-                <%= link_to "View", rails_profiler.profile_path(profile[:request_id]), class: "btn btn-sm" %>
-              </td>
-            </tr>
-          <% end %>
-        </tbody>
-      </table>
+  <div class="row mb-4">
+    <div class="col-md-12">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Request Volume</h2>
+        </div>
+        <div class="card-body">
+          <div style="height: 200px;">
+            <canvas id="requestVolumeChart"></canvas>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
+
+  <div class="section-header">
+    <h2>Top Endpoints</h2>
+    <a href="<%= rails_profiler.endpoints_path %>" class="btn btn-sm btn-outline-primary">View All</a>
+  </div>
+
+  <div class="endpoints-section">
+    <% if @endpoints.present? %>
+      <div class="endpoints-list">
+        <% @endpoints.take(6).each do |endpoint| %>
+          <div class="endpoint-card">
+            <div class="endpoint-header">
+              <h3 class="endpoint-name">
+                <a href="<%= rails_profiler.endpoints_path(endpoint: endpoint[:name]) %>">
+                  <%= endpoint[:name] %>
+                </a>
+              </h3>
+              <div class="endpoint-meta">
+                <span class="endpoint-count"><%= endpoint[:count] %> requests</span>
+                <span class="endpoint-time">
+                  <span class="<%= endpoint[:avg_duration] > 500 ? 'text-danger' : (endpoint[:avg_duration] > 200 ? 'text-warning' : 'text-success') %>">
+                    <%= endpoint[:avg_duration].round(2) %> ms
+                  </span> avg
+                </span>
+              </div>
+            </div>
+            
+            <div class="endpoint-timeline">
+              <% endpoint[:segments].each do |segment| %>
+                <div class="segment" 
+                     style="width: <%= segment[:percentage].round(1) %>%; background-color: var(--<%= segment[:name].downcase %>-color);"
+                     title="<%= segment[:name] %>: <%= segment[:percentage].round(1) %>%"></div>
+              <% end %>
+            </div>
+            
+            <div class="endpoint-breakdown">
+              <div class="breakdown-item">
+                <span class="breakdown-label">Database</span>
+                <span class="breakdown-value"><%= endpoint[:avg_db_time]&.round(1) || 0 %> ms</span>
+              </div>
+              <div class="breakdown-item">
+                <span class="breakdown-label">View</span>
+                <span class="breakdown-value"><%= endpoint[:avg_view_time]&.round(1) || 0 %> ms</span>
+              </div>
+              <div class="breakdown-item">
+                <span class="breakdown-label">Ruby</span>
+                <span class="breakdown-value"><%= endpoint[:avg_ruby_time]&.round(1) || 0 %> ms</span>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    <% else %>
+      <div class="no-data">
+        <p>No endpoints have been profiled yet.</p>
+      </div>
+    <% end %>
+  </div>
+
+  <div class="section-header">
+    <h2>Recent Requests</h2>
+    <a href="<%= rails_profiler.profiles_path %>" class="btn btn-sm btn-outline-primary">View All</a>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Endpoint</th>
+          <th>Path</th>
+          <th>Method</th>
+          <th>Status</th>
+          <th>Duration</th>
+          <th>Time</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @profiles.each do |profile| %>
+          <tr>
+            <td>
+              <% if profile[:endpoint_name] %>
+                <a href="<%= rails_profiler.endpoints_path(endpoint: profile[:endpoint_name]) %>">
+                  <%= profile[:endpoint_name] %>
+                </a>
+              <% else %>
+                Unknown
+              <% end %>
+            </td>
+            <td><%= profile[:path].truncate(40) %></td>
+            <td>
+              <span class="method-badge <%= profile[:method]&.downcase %>"><%= profile[:method] %></span>
+            </td>
+            <td>
+              <span class="status-badge status-<%= profile[:status].to_s[0] %>00">
+                <%= profile[:status] %>
+              </span>
+            </td>
+            <td>
+              <span class="duration <%= profile[:duration] > 1000 ? 'slow' : (profile[:duration] > 500 ? 'medium' : 'fast') %>">
+                <%= profile[:duration].round(2) %> ms
+              </span>
+              <div class="mini-timeline">
+                <% if profile[:db_time] && profile[:duration] > 0 %>
+                  <div class="segment db-segment" style="width: <%= ((profile[:db_time] / profile[:duration]) * 100).round(1) %>%"></div>
+                <% end %>
+                <% if profile[:view_time] && profile[:duration] > 0 %>
+                  <div class="segment view-segment" style="width: <%= ((profile[:view_time] / profile[:duration]) * 100).round(1) %>%"></div>
+                <% end %>
+                <% if profile[:ruby_time] && profile[:duration] > 0 %>
+                  <div class="segment ruby-segment" style="width: <%= ((profile[:ruby_time] / profile[:duration]) * 100).round(1) %>%"></div>
+                <% end %>
+              </div>
+            </td>
+            <td>
+              <span title="<%= profile[:started_at].is_a?(String) ? profile[:started_at] : profile[:started_at].strftime("%Y-%m-%d %H:%M:%S") %>">
+                <%= profile[:started_at].is_a?(String) ? profile[:started_at] : time_ago_in_words(profile[:started_at]) %> ago
+              </span>
+            </td>
+            <td>
+              <a href="<%= rails_profiler.profile_path(profile[:request_id]) %>" class="btn btn-sm btn-outline-primary">
+                View
+              </a>
+            </td>
+          </tr>
+        <% end %>
+        <% if @profiles.empty? %>
+          <tr>
+            <td colspan="7" class="text-center py-4">No profiles collected yet</td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+
+  <% if @stats[:slow_queries].present? %>
+    <div class="section-header">
+      <h2>Slow Queries</h2>
+      <a href="<%= rails_profiler.slowest_queries_path %>" class="btn btn-sm btn-outline-primary">View All</a>
+    </div>
+    
+    <div class="slow-queries-section">
+      <% @stats[:slow_queries].take(3).each_with_index do |query, index| %>
+        <div class="query-item">
+          <div class="query-header">
+            <span class="query-number">#<%= index + 1 %></span>
+            <span class="query-duration text-danger">
+              <%= query[:duration].round(2) %> ms
+            </span>
+            <span class="query-name">
+              <%= query[:name] || "SQL Query" %> in
+              <a href="<%= rails_profiler.endpoints_path(endpoint: query[:endpoint_name]) %>">
+                <%= query[:endpoint_name] || "Unknown" %>
+              </a>
+            </span>
+          </div>
+          
+          <div class="query-sql">
+            <code><%= query[:sql].truncate(200) %></code>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
 </div>
+
+<style>
+  /* Additional styles not in the layout */
+  .stat-trend {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  
+  .trend-up {
+    color: var(--success-color);
+  }
+  
+  .trend-down {
+    color: var(--danger-color);
+  }
+</style>
+
+<!-- Chart.js library -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Sample data for the chart (replace with actual data from your controller)
+    const volumeData = <%= raw (@volume_data || [
+      { timestamp: 1.hour.ago, count: rand(10..30) },
+      { timestamp: 50.minutes.ago, count: rand(10..30) },
+      { timestamp: 40.minutes.ago, count: rand(10..30) },
+      { timestamp: 30.minutes.ago, count: rand(10..30) },
+      { timestamp: 20.minutes.ago, count: rand(10..50) },
+      { timestamp: 10.minutes.ago, count: rand(10..30) }
+    ]).to_json %>;
+    
+    // Format dates and extract data points
+    const labels = volumeData.map(d => {
+      const date = new Date(d.timestamp);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    });
+    const counts = volumeData.map(d => d.count);
+    
+    // Create request volume chart
+    const requestCtx = document.getElementById('requestVolumeChart').getContext('2d');
+    new Chart(requestCtx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Request Count',
+          data: counts,
+          backgroundColor: 'rgba(60, 118, 242, 0.1)',
+          borderColor: 'rgba(60, 118, 242, 0.8)',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          fill: true,
+          tension: 0.3,
+          cubicInterpolationMode: 'monotone'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            grid: {
+              display: false
+            }
+          },
+          y: {
+            beginAtZero: true,
+            grid: {
+              color: 'rgba(0, 0, 0, 0.05)'
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            titleColor: '#1f2937',
+            bodyColor: '#1f2937',
+            borderColor: 'rgba(0, 0, 0, 0.1)',
+            borderWidth: 1,
+            padding: 10,
+            cornerRadius: 6,
+            displayColors: false,
+            callbacks: {
+              title: function(tooltipItems) {
+                return 'Time: ' + tooltipItems[0].label;
+              },
+              label: function(context) {
+                return context.parsed.y + ' requests';
+              }
+            }
+          }
+        },
+        interaction: {
+          mode: 'index',
+          intersect: false
+        }
+      }
+    });
+  });
+</script>

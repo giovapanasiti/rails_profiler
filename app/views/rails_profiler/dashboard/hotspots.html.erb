@@ -1,0 +1,394 @@
+<div class="hotspots-page">
+  <div class="dashboard-header">
+    <h1>Code Hotspots</h1>
+    <div class="dashboard-actions">
+      <a href="<%= rails_profiler.dashboard_index_path %>" class="btn btn-outline-primary">
+        <i class="fas fa-arrow-left"></i> Back to Dashboard
+      </a>
+    </div>
+  </div>
+
+  <div class="hotspots-layout">
+    <!-- Controller Hotspots -->
+    <div class="hotspot-section">
+      <div class="section-header">
+        <h2>Controller Hotspots</h2>
+        <div class="section-info">
+          <i class="fas fa-info-circle"></i>
+          <div class="tooltip">Controllers that spend the most time processing requests.</div>
+        </div>
+      </div>
+      
+      <div class="hotspot-cards">
+        <% @hotspots[:controllers].each do |controller| %>
+          <div class="hotspot-card">
+            <div class="hotspot-header">
+              <h3 class="hotspot-name"><%= controller[:name] %></h3>
+              <div class="hotspot-value"><%= controller[:value].round(2) %> ms</div>
+            </div>
+            
+            <div class="hotspot-progress">
+              <div class="progress-bar" style="width: <%= (controller[:value] / @max_controller_time) * 100 %>%"></div>
+            </div>
+            
+            <div class="hotspot-details">
+              <% if controller[:data][:actions].present? %>
+                <h4>Top Actions</h4>
+                <ul class="action-list">
+                  <% controller[:data][:actions].to_a.sort_by { |_, v| -v[:total_time] }.take(3).each do |action, data| %>
+                    <li>
+                      <span class="action-name"><%= action %>:</span>
+                      <span class="action-time"><%= data[:total_time].round(2) %> ms</span>
+                    </li>
+                  <% end %>
+                </ul>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    
+    <!-- Method Hotspots -->
+    <div class="hotspot-section">
+      <div class="section-header">
+        <h2>Method Hotspots</h2>
+        <div class="section-info">
+          <i class="fas fa-info-circle"></i>
+          <div class="tooltip">Methods that spend the most exclusive time (time in the method itself, not in called methods).</div>
+        </div>
+      </div>
+      
+      <div class="hotspot-cards method-cards">
+        <% @hotspots[:methods].each do |method| %>
+          <div class="hotspot-card">
+            <div class="hotspot-header">
+              <h3 class="hotspot-name"><%= method[:name] %></h3>
+              <div class="hotspot-value"><%= method[:value].round(2) %> ms</div>
+            </div>
+            
+            <div class="hotspot-progress">
+              <div class="progress-bar" style="width: <%= (method[:value] / @max_method_time) * 100 %>%"></div>
+            </div>
+            
+            <div class="hotspot-details">
+              <div class="method-stats">
+                <div class="stat">
+                  <span class="stat-label">Calls:</span>
+                  <span class="stat-value"><%= method[:data][:count] %></span>
+                </div>
+                <div class="stat">
+                  <span class="stat-label">Avg time:</span>
+                  <span class="stat-value"><%= (method[:value] / method[:data][:count]).round(2) %> ms</span>
+                </div>
+                <div class="stat">
+                  <span class="stat-label">Total time:</span>
+                  <span class="stat-value"><%= method[:data][:total_time].round(2) %> ms</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    
+    <!-- Model & View Hotspots -->
+    <div class="hotspot-row">
+      <!-- Model Hotspots -->
+      <div class="hotspot-section">
+        <div class="section-header">
+          <h2>Model Hotspots</h2>
+          <div class="section-info">
+            <i class="fas fa-info-circle"></i>
+            <div class="tooltip">Models that generate the slowest database queries.</div>
+          </div>
+        </div>
+        
+        <div class="hotspot-list">
+          <% if @hotspots[:models].empty? %>
+            <div class="no-data">No model data available</div>
+          <% else %>
+            <table class="hotspot-table">
+              <thead>
+                <tr>
+                  <th>Model</th>
+                  <th>Query Count</th>
+                  <th>Total Time</th>
+                  <th>Avg Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% @hotspots[:models].each do |model| %>
+                  <tr>
+                    <td class="model-name"><%= model[:name] %></td>
+                    <td><%= model[:data][:count] %></td>
+                    <td><%= model[:value].round(2) %> ms</td>
+                    <td><%= (model[:value] / model[:data][:count]).round(2) %> ms</td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          <% end %>
+        </div>
+      </div>
+      
+      <!-- View Hotspots -->
+      <div class="hotspot-section">
+        <div class="section-header">
+          <h2>View Hotspots</h2>
+          <div class="section-info">
+            <i class="fas fa-info-circle"></i>
+            <div class="tooltip">Templates and partials that take the longest to render.</div>
+          </div>
+        </div>
+        
+        <div class="hotspot-list">
+          <% if @hotspots[:views].empty? %>
+            <div class="no-data">No view data available</div>
+          <% else %>
+            <table class="hotspot-table">
+              <thead>
+                <tr>
+                  <th>Template</th>
+                  <th>Render Count</th>
+                  <th>Total Time</th>
+                  <th>Avg Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% @hotspots[:views].each do |view| %>
+                  <tr>
+                    <td class="view-name"><%= view[:name] %></td>
+                    <td><%= view[:data][:count] %></td>
+                    <td><%= view[:value].round(2) %> ms</td>
+                    <td><%= (view[:value] / view[:data][:count]).round(2) %> ms</td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .hotspots-page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1rem;
+    background-color: <%= RailsProfiler.config.color_scheme[:background] %>;
+  }
+  
+  .dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+  }
+  
+  .dashboard-header h1 {
+    color: <%= RailsProfiler.config.color_scheme[:primary] %>;
+    font-weight: bold;
+    margin: 0;
+  }
+  
+  .hotspots-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+  }
+  
+  .hotspot-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+  }
+  
+  .hotspot-section {
+    background-color: <%= RailsProfiler.config.color_scheme[:card] %>;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    padding: 1.5rem;
+  }
+  
+  .section-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    position: relative;
+  }
+  
+  .section-header h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+    color: <%= RailsProfiler.config.color_scheme[:text] %>;
+  }
+  
+  .section-info {
+    margin-left: 0.75rem;
+    position: relative;
+    color: <%= RailsProfiler.config.color_scheme[:muted] %>;
+  }
+  
+  .section-info .tooltip {
+    position: absolute;
+    background-color: <%= RailsProfiler.config.color_scheme[:text] %>;
+    color: white;
+    padding: 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    width: 200px;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    display: none;
+    z-index: 10;
+  }
+  
+  .section-info:hover .tooltip {
+    display: block;
+  }
+  
+  .hotspot-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+  }
+  
+  .method-cards {
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  }
+  
+  .hotspot-card {
+    background-color: <%= RailsProfiler.config.color_scheme[:card] %>;
+    border: 1px solid rgba(0,0,0,0.1);
+    border-radius: 6px;
+    padding: 1rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  
+  .hotspot-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  }
+  
+  .hotspot-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
+  }
+  
+  .hotspot-name {
+    font-size: 0.975rem;
+    font-weight: 600;
+    margin: 0;
+    color: <%= RailsProfiler.config.color_scheme[:text] %>;
+    word-break: break-word;
+  }
+  
+  .hotspot-value {
+    font-size: 0.875rem;
+    font-weight: bold;
+    color: <%= RailsProfiler.config.color_scheme[:primary] %>;
+    white-space: nowrap;
+    margin-left: 0.5rem;
+  }
+  
+  .hotspot-progress {
+    height: 6px;
+    background-color: #E9ECEF;
+    border-radius: 3px;
+    margin-bottom: 1rem;
+    overflow: hidden;
+  }
+  
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, <%= RailsProfiler.config.color_scheme[:primary] %>, <%= RailsProfiler.config.color_scheme[:secondary] %>);
+    border-radius: 3px;
+  }
+  
+  .hotspot-details {
+    font-size: 0.875rem;
+  }
+  
+  .action-list {
+    padding-left: 0;
+    list-style-type: none;
+    margin: 0.5rem 0 0 0;
+  }
+  
+  .action-list li {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.25rem;
+  }
+  
+  .action-name {
+    color: <%= RailsProfiler.config.color_scheme[:text] %>;
+  }
+  
+  .action-time {
+    color: <%= RailsProfiler.config.color_scheme[:secondary] %>;
+    font-weight: 500;
+  }
+  
+  .method-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+  }
+  
+  .stat {
+    display: flex;
+    gap: 0.25rem;
+  }
+  
+  .stat-label {
+    color: <%= RailsProfiler.config.color_scheme[:muted] %>;
+  }
+  
+  .stat-value {
+    color: <%= RailsProfiler.config.color_scheme[:text] %>;
+    font-weight: 500;
+  }
+  
+  .hotspot-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  
+  .hotspot-table th, .hotspot-table td {
+    text-align: left;
+    padding: 0.5rem;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    font-size: 0.875rem;
+  }
+  
+  .hotspot-table th {
+    color: <%= RailsProfiler.config.color_scheme[:muted] %>;
+    font-weight: normal;
+  }
+  
+  .model-name, .view-name {
+    font-weight: 500;
+    color: <%= RailsProfiler.config.color_scheme[:text] %>;
+  }
+  
+  .no-data {
+    color: <%= RailsProfiler.config.color_scheme[:muted] %>;
+    text-align: center;
+    padding: 2rem 0;
+  }
+
+  /* Responsive adjustments */
+  @media (max-width: 992px) {
+    .hotspot-row {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -1,0 +1,137 @@
+<div class="trends-page">
+  <div class="dashboard-header">
+    <h1>Performance Trends</h1>
+    <div class="dashboard-actions">
+      <div class="btn-group" role="group">
+        <a href="<%= rails_profiler.trends_path(days: 1) %>" class="btn <%= params[:days] == '1' ? 'btn-primary' : 'btn-outline-primary' %>">24 Hours</a>
+        <a href="<%= rails_profiler.trends_path(days: 7) %>" class="btn <%= params[:days].blank? || params[:days] == '7' ? 'btn-primary' : 'btn-outline-primary' %>">7 Days</a>
+        <a href="<%= rails_profiler.trends_path(days: 30) %>" class="btn <%= params[:days] == '30' ? 'btn-primary' : 'btn-outline-primary' %>">30 Days</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="trends-container">
+    <div class="chart-section">
+      <h3>Request Volume</h3>
+      <div class="chart-container">
+        <canvas id="requestVolumeChart"></canvas>
+      </div>
+    </div>
+    
+    <div class="chart-section">
+      <h3>Response Time</h3>
+      <div class="chart-container">
+        <canvas id="responseTimeChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Include Chart.js library -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Prepare data for charts
+    const trendsData = <%= raw @trends_data.to_json %>;
+    
+    // Format dates and extract data points
+    const labels = trendsData.map(d => new Date(d.timestamp).toLocaleString());
+    const requestCounts = trendsData.map(d => d.count);
+    const responseTimes = trendsData.map(d => d.avg_duration);
+    
+    // Create request volume chart
+    const requestCtx = document.getElementById('requestVolumeChart').getContext('2d');
+    new Chart(requestCtx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Request Count',
+          data: requestCounts,
+          backgroundColor: 'rgba(54, 162, 235, 0.2)',
+          borderColor: 'rgba(54, 162, 235, 1)',
+          borderWidth: 2,
+          pointRadius: 3,
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            ticks: {
+              maxRotation: 45,
+              minRotation: 45
+            }
+          },
+          y: {
+            beginAtZero: true
+          }
+        },
+        plugins: {
+          legend: {
+            position: 'top',
+          },
+          tooltip: {
+            callbacks: {
+              title: function(tooltipItems) {
+                const date = new Date(trendsData[tooltipItems[0].dataIndex].timestamp);
+                return date.toLocaleString();
+              }
+            }
+          }
+        }
+      }
+    });
+    
+    // Create response time chart
+    const responseCtx = document.getElementById('responseTimeChart').getContext('2d');
+    new Chart(responseCtx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Average Response Time (ms)',
+          data: responseTimes,
+          backgroundColor: 'rgba(255, 159, 64, 0.2)',
+          borderColor: 'rgba(255, 159, 64, 1)',
+          borderWidth: 2,
+          pointRadius: 3,
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            ticks: {
+              maxRotation: 45,
+              minRotation: 45
+            }
+          },
+          y: {
+            beginAtZero: true
+          }
+        },
+        plugins: {
+          legend: {
+            position: 'top',
+          },
+          tooltip: {
+            callbacks: {
+              title: function(tooltipItems) {
+                const date = new Date(trendsData[tooltipItems[0].dataIndex].timestamp);
+                return date.toLocaleString();
+              }
+            }
+          }
+        }
+      }
+    });
+  });
+</script>
