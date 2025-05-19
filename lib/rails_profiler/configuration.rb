@@ -6,7 +6,7 @@ module RailsProfiler
                   :cleanup_interval
 
     def initialize
-      @enabled = Rails.env.production? || Rails.env.staging?
+      @enabled = true #Rails.env.production? || Rails.env.staging?
       @storage_backend = :redis
       @redis_url = ENV.fetch('REDIS_URL', 'redis://localhost:6379/12')
       @sample_rate = 0.1 # Sample 10% of requests

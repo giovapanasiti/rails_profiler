@@ -4,9 +4,8 @@ require "json"
 module RailsProfiler
   class Storage
     def self.store_profile(data)
-      Rails.logger.debug "[RailsProfiler] Storage.store_profile called with backend: #{RailsProfiler.config.storage_backend}"
-      puts "Storing profile with request_id: #{data[:request_id]}, path: #{data[:path]}, duration: #{data[:duration].round(2)}ms"
-
+      puts "[RailsProfiler] Storage.store_profile called with backend: #{RailsProfiler.config.storage_backend}"
+      
       case RailsProfiler.config.storage_backend
       when :redis
         RedisStorage.store_profile(data)
@@ -46,21 +45,33 @@ module RailsProfiler
   class RedisStorage
     def self.redis
       @redis ||= begin
-        Rails.logger.debug "[RailsProfiler] Connecting to Redis at: #{RailsProfiler.config.redis_url}"
-        Redis.new(url: RailsProfiler.config.redis_url)
+        url = RailsProfiler.config.redis_url
+        puts "[RailsProfiler] Redis: Connecting to Redis at: #{url}"
+        begin
+          client = Redis.new(url: url)
+          # Test the connection
+          client.ping
+          puts "[RailsProfiler] Redis: Successfully connected to Redis"
+          client
+        rescue => e
+          puts "[RailsProfiler] Redis: Connection error: #{e.class.name} - #{e.message}"
+          puts e.backtrace.join("\n")
+          raise
+        end
       end
     end
 
     def self.store_profile(data)
       key = "rails_profiler:profile:#{data[:request_id]}"
-      puts "Storing profile in Redis with key: #{key}, data: #{data}"
       begin
-        Rails.logger.debug "[RailsProfiler] Redis: storing profile with key: #{key}, expiry: #{retention_seconds} seconds"
+        puts "[RailsProfiler] Redis: Storing profile with key: #{key}"
         redis.setex(key, retention_seconds, data.to_json)
-        Rails.logger.debug "[RailsProfiler] Redis: adding to sorted set rails_profiler:profiles with score: #{data[:started_at].to_f}"
+        puts "[RailsProfiler] Redis: Adding to sorted set rails_profiler:profiles with request_id: #{data[:request_id]}"
         redis.zadd("rails_profiler:profiles", data[:started_at].to_f, data[:request_id])
-        Rails.logger.info "[RailsProfiler] Redis: profile successfully stored with key: #{key}"
+        puts "[RailsProfiler] Redis: Successfully stored profile with key: #{key}"
       rescue => e
+        puts "[RailsProfiler] Redis error storing profile: #{e.class.name} - #{e.message}"
+        puts e.backtrace.join("\n")
         Rails.logger.error "[RailsProfiler] Redis error storing profile: #{e.class.name} - #{e.message}"
         Rails.logger.error e.backtrace.join("\n")
       end
@@ -100,8 +111,10 @@ module RailsProfiler
     private
 
     def self.retention_seconds
-      Rails.logger.debug "[RailsProfiler] Redis retention configured for #{RailsProfiler.config.retention_days} days"
-      RailsProfiler.config.retention_days * 24 * 60 * 60
+      days = RailsProfiler.config.retention_days
+      seconds = days * 24 * 60 * 60
+      puts "[RailsProfiler] Redis: Using retention period of #{days} days (#{seconds} seconds)"
+      seconds
     end
   end
 

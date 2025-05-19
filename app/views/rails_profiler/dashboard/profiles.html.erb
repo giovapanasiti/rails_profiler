@@ -1,0 +1,48 @@
+<div class="container">
+  <h1>All Profiles</h1>
+  
+  <div class="profiles-wrapper">
+    <div class="table-responsive">
+      <table class="table table-hover">
+        <thead>
+          <tr>
+            <th>Path</th>
+            <th>Method</th>
+            <th>Status</th>
+            <th>Duration (ms)</th>
+            <th>Queries</th>
+            <th>Query Time (ms)</th>
+            <th>Time</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @profiles.each do |profile| %>
+            <tr>
+              <td><%= profile[:path] %></td>
+              <td><%= profile[:method] %></td>
+              <td><%= profile[:status] %></td>
+              <td><%= profile[:duration].round(2) %></td>
+              <td><%= profile[:query_count] %></td>
+              <td><%= profile[:total_query_time].round(2) %></td>
+              <td><%= profile[:started_at].strftime("%H:%M:%S") %></td>
+              <td>
+                <%= link_to "View", rails_profiler.profile_path(profile[:request_id]), class: "btn btn-sm btn-primary" %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    
+    <div class="pagination">
+      <% if @current_page > 1 %>
+        <%= link_to "← Previous", rails_profiler.profiles_path(page: @current_page - 1), class: "btn btn-sm btn-outline-primary" %>
+      <% end %>
+      
+      <% if @profiles.size == 50 %>
+        <%= link_to "Next →", rails_profiler.profiles_path(page: @current_page + 1), class: "btn btn-sm btn-outline-primary" %>
+      <% end %>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,83 @@
+<div class="container">
+  <h1>Slowest SQL Queries</h1>
+  
+  <div class="filter-controls mb-4">
+    <form class="form-inline" method="get">
+      <div class="form-group mr-2">
+        <label for="limit">Limit:</label>
+        <select id="limit" name="limit" class="form-control ml-2">
+          <option value="20" <%= params[:limit] == "20" ? "selected" : "" %>>20</option>
+          <option value="50" <%= params[:limit] == "50" || params[:limit].nil? ? "selected" : "" %>>50</option>
+          <option value="100" <%= params[:limit] == "100" ? "selected" : "" %>>100</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary">Apply</button>
+    </form>
+  </div>
+  
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Duration (ms)</th>
+          <th>Query Name</th>
+          <th>SQL</th>
+          <th>Path</th>
+          <th>Time</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @slowest_queries.each_with_index do |query, index| %>
+          <tr>
+            <td>#<%= index + 1 %></td>
+            <td><strong class="text-<%= query[:duration] > 100 ? 'danger' : (query[:duration] > 50 ? 'warning' : 'success') %>">
+              <%= query[:duration].round(2) %>
+            </strong></td>
+            <td><%= query[:name] %></td>
+            <td>
+              <div class="sql-preview">
+                <%= query[:sql].truncate(100) %>
+                <% if query[:sql].length > 100 %>
+                  <button type="button" class="btn btn-sm btn-link" data-toggle="modal" data-target="#sqlModal<%= index %>">
+                    View Full SQL
+                  </button>
+                <% end %>
+              </div>
+            </td>
+            <td><%= query[:path] %></td>
+            <td><%= query[:started_at].is_a?(String) ? query[:started_at] : query[:started_at].strftime("%H:%M:%S") %></td>
+            <td>
+              <%= link_to "View Profile", rails_profiler.profile_path(query[:request_id]), class: "btn btn-sm btn-primary" %>
+            </td>
+          </tr>
+          
+          <% if query[:sql].length > 100 %>
+            <div class="modal fade" id="sqlModal<%= index %>" tabindex="-1" role="dialog" aria-labelledby="sqlModalLabel<%= index %>" aria-hidden="true">
+              <div class="modal-dialog modal-lg" role="document">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title" id="sqlModalLabel<%= index %>">Full SQL Query</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                      <span aria-hidden="true">&times;</span>
+                    </button>
+                  </div>
+                  <div class="modal-body">
+                    <pre class="sql-full"><%= query[:sql] %></pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <% end %>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+  
+  <div class="mt-4">
+    <p class="text-muted">
+      Showing top <%= @slowest_queries.size %> slowest queries from the most recent <%= @profiles.size %> requests.
+    </p>
+  </div>
+</div>

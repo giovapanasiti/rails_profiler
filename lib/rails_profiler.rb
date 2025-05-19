@@ -9,17 +9,16 @@ require "rails_profiler/storage"
 
 module RailsProfiler
   class << self
-    attr_accessor :configuration
-
     def configure
-      self.configuration ||= Configuration.new
-      yield(configuration)
-      config.validate!
-      Rails.logger.info "[RailsProfiler] Configured with storage_backend=#{config.storage_backend}, enabled=#{config.enabled}, sample_rate=#{config.sample_rate}"
+      @config ||= Configuration.new
+      yield(@config)
+      @config.validate!
+      puts "[RailsProfiler] Configured with storage_backend=#{@config.storage_backend}, enabled=#{@config.enabled}, sample_rate=#{@config.sample_rate}, redis_url=#{@config.redis_url}"
+      Rails.logger.info "[RailsProfiler] Configured with storage_backend=#{@config.storage_backend}, enabled=#{@config.enabled}, sample_rate=#{@config.sample_rate}, redis_url=#{@config.redis_url}"
     end
 
     def config
-      self.configuration ||= Configuration.new
+      @config ||= Configuration.new
     end
 
     def enabled?

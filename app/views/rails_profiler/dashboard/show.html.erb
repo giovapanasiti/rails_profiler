@@ -6,7 +6,7 @@
       <h3>Request ID: <%= @profile[:request_id] %></h3>
       <p><strong>Started:</strong> <%= @profile[:started_at] %></p>
       <p><strong>Duration:</strong> <%= @profile[:duration].round(2) %>ms</p>
-      <p><strong>Status:</strong> <%= @profile[:response_status] %></p>
+      <p><strong>Status:</strong> <%= @profile[:status] %></p>
     </div>
   </div>
 
@@ -36,22 +36,26 @@
     </div>
 
     <div class="section">
-      <h3>Code Profiles (<%= @profile[:profiles].size %>)</h3>
+      <h3>Code Profiles (<%= @profile.dig(:additional_data, :profiles)&.size || 0 %>)</h3>
       <div class="profiles-list">
-        <% @profile[:profiles].each_with_index do |code_profile, index| %>
-          <div class="profile-item">
-            <div class="profile-header">
-              <span class="profile-number">#<%= index + 1 %></span>
-              <span class="profile-duration"><%= code_profile[:duration].round(2) %>ms</span>
-              <span class="profile-name"><%= code_profile[:name] %></span>
+        <% if @profile.dig(:additional_data, :profiles).present? %>
+          <% @profile[:additional_data][:profiles].each_with_index do |code_profile, index| %>
+            <div class="profile-item">
+              <div class="profile-header">
+                <span class="profile-number">#<%= index + 1 %></span>
+                <span class="profile-duration"><%= code_profile[:duration].round(2) %>ms</span>
+                <span class="profile-name"><%= code_profile[:name] %></span>
+              </div>
+              <% if code_profile[:backtrace] %>
+                <details class="profile-backtrace">
+                  <summary>Backtrace</summary>
+                  <pre><%= code_profile[:backtrace].join("\n") %></pre>
+                </details>
+              <% end %>
             </div>
-            <% if code_profile[:backtrace] %>
-              <details class="profile-backtrace">
-                <summary>Backtrace</summary>
-                <pre><%= code_profile[:backtrace].join("\n") %></pre>
-              </details>
-            <% end %>
-          </div>
+          <% end %>
+        <% else %>
+          <p>No code profiles recorded for this request.</p>
         <% end %>
       </div>
     </div>
