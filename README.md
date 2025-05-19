@@ -24,6 +24,13 @@ Then execute:
 bundle install
 ```
 
+If you plan to use the database storage backend, run the migrations:
+
+```bash
+rails rails_profiler:install:migrations
+rails db:migrate
+```
+
 ## Configuration
 
 Create an initializer `config/initializers/rails_profiler.rb`:
@@ -31,8 +38,13 @@ Create an initializer `config/initializers/rails_profiler.rb`:
 ```ruby
 RailsProfiler.configure do |config|
   config.enabled = Rails.env.production? || Rails.env.staging?
+  
+  # Choose a storage backend: :redis or :database
   config.storage_backend = :redis
+  
+  # Redis configuration (only needed if using Redis backend)
   config.redis_url = ENV.fetch('REDIS_URL', 'redis://localhost:6379/0')
+  
   config.sample_rate = 0.1 # Profile 10% of requests
   config.track_queries = true
   config.track_code = true
@@ -85,7 +97,18 @@ Visit `/profiler` in your application and log in with your configured credential
 Stores profiles in Redis with automatic expiration based on retention settings.
 
 ### Database
-Alternative storage using ActiveRecord (implementation extends the base gem).
+Stores profiles in your application's database using ActiveRecord:
+
+1. Runs automatically with the migration
+2. Uses the `rails_profiler_profiles` table 
+3. Keeps database size in check with an automatic cleanup task
+
+To clean up old profiles when using database storage:
+
+```bash
+# Run manually or in a cron job
+rails rails_profiler:cleanup
+```
 
 ## Security
 
