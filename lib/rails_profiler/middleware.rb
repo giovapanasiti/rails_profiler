@@ -50,6 +50,11 @@ module RailsProfiler
       # Add segments data based on instrumentation results
       profiler.process_segments(duration)
       
+      if status < 100 
+        Rails.logger.error "[RailsProfiler] ❌ Invalid status code: #{status} for request_id: #{request_id}"
+        return [status, headers, response]
+      end
+
       # Finish profiling and store the data
       profiler.finish(status, duration)
 

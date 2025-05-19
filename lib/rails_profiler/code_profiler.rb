@@ -147,39 +147,9 @@ module RailsProfiler
         end
       end
       
-      # Profile ActiveRecord model methods
-      def profile_models
-        return unless RailsProfiler.enabled?
-        
-        if defined?(ActiveRecord::Base)
-          # Profile common ActiveRecord methods
-          model_methods = [
-            :find, :find_by, :where, :create, :update, :destroy,
-            :save, :save!, :update_attributes, :update_attributes!
-          ]
-          
-          model_methods.each do |method_name|
-            if ActiveRecord::Base.respond_to?(method_name)
-              profile_method(ActiveRecord::Base.singleton_class, method_name)
-            end
-          end
-          
-          if ActiveRecord::Base.respond_to?(:find_by_sql)
-            # Profile all database queries
-            ActiveRecord::Base.singleton_class.class_eval do
-              alias_method :find_by_sql_without_profiling, :find_by_sql
-              
-              def find_by_sql(sql, binds = [], preparable: nil, &block)
-                RailsProfiler::CodeProfiler.profile("ActiveRecord::Base.find_by_sql") do
-                  find_by_sql_without_profiling(sql, binds, preparable: preparable, &block)
-                end
-              end
-            end
-          end
-        end
-      end
       
-      # Profile view rendering
+      
+      # Profile view rendering - improved to handle all argument combinations
       def profile_views
         return unless RailsProfiler.enabled?
         
@@ -187,11 +157,64 @@ module RailsProfiler
           ActionView::Template.class_eval do
             alias_method :render_without_profiling, :render
             
-            def render(view, *args, &block)
+            # Update the render method to properly handle all argument types
+            # We support all combinations of arguments that Rails itself supports
+            def render(*args, **kwargs, &block)
               template_path = virtual_path || identifier
               RailsProfiler::CodeProfiler.profile("Render: #{template_path}") do
-                render_without_profiling(view, *args, &block)
+                if kwargs.empty?
+                  render_without_profiling(*args, &block)
+                else
+                  render_without_profiling(*args, **kwargs, &block)
+                end
               end
+            end
+          end
+        end
+        
+      end
+      
+      # Setup profiling for configured methods from config.auto_profile_methods
+      def profile_configured_methods
+        return unless RailsProfiler.enabled?
+        
+        configured_methods = RailsProfiler.config.auto_profile_methods
+        return if configured_methods.empty?
+        
+        configured_methods.each do |method_pattern|
+          # Handle patterns like 'User#*' (all methods in User) or 'Post#save' (specific method)
+          if method_pattern.include?('#')
+            class_name, method_pattern = method_pattern.split('#', 2)
+            
+            # Find the class
+            klass = class_name.constantize rescue nil
+            next unless klass
+            
+            if method_pattern == '*'
+              # Profile all instance methods in the class
+              klass.instance_methods(false).each do |method_name|
+                profile_method(klass, method_name)
+              end
+            else
+              # Profile specific method
+              profile_method(klass, method_pattern.to_sym) if klass.method_defined?(method_pattern)
+            end
+          elsif method_pattern.include?('.')
+            # Handle static/class methods like 'User.find_by_email'
+            class_name, method_pattern = method_pattern.split('.', 2)
+            
+            # Find the class
+            klass = class_name.constantize rescue nil
+            next unless klass
+            
+            if method_pattern == '*'
+              # Profile all class methods
+              klass.singleton_class.instance_methods(false).each do |method_name|
+                profile_method(klass.singleton_class, method_name)
+              end
+            else
+              # Profile specific class method
+              profile_method(klass.singleton_class, method_pattern.to_sym) if klass.singleton_class.method_defined?(method_pattern)
             end
           end
         end
@@ -249,24 +272,13 @@ module RailsProfiler
         CodeProfiler.profile_controllers 
       end
       
-      if RailsProfiler.config.profile_models
-        CodeProfiler.profile_models
-      end
-      
       # Set up automatic profiling of configured methods
       CodeProfiler.profile_configured_methods
       
-      # Set up view profiling
-      ActionView::Template.class_eval do
-        alias_method :render_without_profiling, :render
-        
-        def render(*args, &block)
-          template_name = virtual_path || "unknown_template"
-          RailsProfiler::CodeProfiler.profile_view_render(template_name) do
-            render_without_profiling(*args, &block)
-          end
-        end
-      end if defined?(ActionView::Template) && RailsProfiler.config.track_code
+      # Set up view profiling - now handled by profile_views method to avoid duplicating the patch
+      if RailsProfiler.config.track_code && defined?(ActionView::Template)
+        CodeProfiler.profile_views
+      end
     end
   end
 end

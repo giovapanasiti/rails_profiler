@@ -8,6 +8,26 @@ module RailsProfiler
     cattr_accessor :mount_path
     self.mount_path = nil
 
+    # Add a very early initializer to catch Redis issues before anything else
+    initializer "rails_profiler.check_redis_compatibility", before: :load_config_initializers do |app|
+      # Test Redis compatibility
+      if defined?(Redis) && RailsProfiler.config.storage_backend == :redis
+        begin
+          puts "[RailsProfiler] Checking Redis compatibility..."
+          # This will trigger our patched Redis.new method
+          test_redis = Redis.new(url: RailsProfiler.config.redis_url)
+          if test_redis.nil?
+            puts "[RailsProfiler] Redis unavailable, switching to database storage if possible"
+            RailsProfiler.config.instance_variable_set(:@storage_backend, :database) if defined?(RailsProfiler::Profile)
+          end
+        rescue => e
+          puts "[RailsProfiler] Redis compatibility check failed: #{e.message}"
+          # Disable Redis if there's any error
+          RailsProfiler.config.instance_variable_set(:@storage_backend, :database) if defined?(RailsProfiler::Profile)
+        end
+      end
+    end
+
     # Insert middleware earlier in the initialization process
     initializer "rails_profiler.insert_middleware", before: :load_config_initializers do |app|
       puts "[RailsProfiler] Engine initializer: Inserting middleware, enabled=#{RailsProfiler.config.enabled}"
@@ -27,16 +47,25 @@ module RailsProfiler
           if RailsProfiler.config.storage_backend == :redis
             begin
               puts "[RailsProfiler] Testing Redis connectivity at #{RailsProfiler.config.redis_url}..."
-              redis = Redis.new(url: RailsProfiler.config.redis_url)
-              test_key = "rails_profiler:test:#{Time.now.to_i}"
-              test_value = "Redis connectivity test at #{Time.now}"
-              redis.setex(test_key, 60, test_value)
-              retrieved = redis.get(test_key)
-              puts "[RailsProfiler] ✅ Redis connection successful. Wrote test key: #{test_key}"
-              puts "[RailsProfiler] ✅ Redis test: wrote '#{test_value}', retrieved '#{retrieved}'"
+              # Use standard URI-only initialization to avoid compatibility issues with different Redis versions
+              redis = nil
+              begin
+                redis = Redis.new(url: RailsProfiler.config.redis_url)
+                test_key = "rails_profiler:test:#{Time.now.to_i}"
+                test_value = "Redis connectivity test at #{Time.now}"
+                redis.setex(test_key, 60, test_value)
+                retrieved = redis.get(test_key)
+                puts "[RailsProfiler] ✅ Redis connection successful. Wrote test key: #{test_key}"
+                puts "[RailsProfiler] ✅ Redis test: wrote '#{test_value}', retrieved '#{retrieved}'"
+              rescue => e
+                puts "[RailsProfiler] ❌ Redis connection ERROR: #{e.class.name} - #{e.message}"
+                puts e.backtrace.join("\n")
+                puts "[RailsProfiler] Will continue without Redis profiling"
+                # Override the storage backend to avoid future errors
+                RailsProfiler.config.instance_variable_set(:@storage_backend, :database) if defined?(RailsProfiler::Profile)
+              end
             rescue => e
-              puts "[RailsProfiler] ❌ Redis connection ERROR: #{e.class.name} - #{e.message}"
-              puts e.backtrace.join("\n")
+              puts "[RailsProfiler] Unexpected error during Redis setup: #{e.class.name} - #{e.message}"
             end
           end
           

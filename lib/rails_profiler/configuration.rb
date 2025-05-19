@@ -6,6 +6,12 @@ module RailsProfiler
                   :cleanup_interval, :profile_controllers, :profile_models,
                   :auto_profile_methods, :color_scheme
 
+    # Add a way to completely disable Redis from outside
+    def disable_redis!
+      @storage_backend = :database
+      puts "[RailsProfiler] Redis storage has been disabled due to compatibility issues"
+    end
+
     def initialize
       @enabled = true #Rails.env.production? || Rails.env.staging?
       @storage_backend = :redis

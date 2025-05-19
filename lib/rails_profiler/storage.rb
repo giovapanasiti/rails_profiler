@@ -48,6 +48,7 @@ module RailsProfiler
         url = RailsProfiler.config.redis_url
         puts "[RailsProfiler] Redis: Connecting to Redis at: #{url}"
         begin
+          # Simple initialization without any extra options to maximize compatibility
           client = Redis.new(url: url)
           # Test the connection
           client.ping
@@ -56,12 +57,19 @@ module RailsProfiler
         rescue => e
           puts "[RailsProfiler] Redis: Connection error: #{e.class.name} - #{e.message}"
           puts e.backtrace.join("\n")
-          raise
+          # Instead of raising error, return nil so we fail gracefully
+          nil
         end
       end
     end
 
     def self.store_profile(data)
+      # Skip profiles with status < 100 (WebSocket connections like /cable or /hotwire-spark)
+      return if data[:status].to_i < 100
+      
+      # If Redis is not available, silently fail to avoid application errors
+      return unless redis
+      
       key = "rails_profiler:profile:#{data[:request_id]}"
       begin
         puts "[RailsProfiler] Redis: Storing profile with key: #{key}"
@@ -71,41 +79,68 @@ module RailsProfiler
         puts "[RailsProfiler] Redis: Successfully stored profile with key: #{key}"
       rescue => e
         puts "[RailsProfiler] Redis error storing profile: #{e.class.name} - #{e.message}"
-        puts e.backtrace.join("\n")
-        Rails.logger.error "[RailsProfiler] Redis error storing profile: #{e.class.name} - #{e.message}"
-        Rails.logger.error e.backtrace.join("\n")
+        # Just log errors but don't propagate them to avoid application crashes
       end
     end
 
     def self.get_profiles(limit: 100, offset: 0)
-      request_ids = redis.zrevrange("rails_profiler:profiles", offset, offset + limit - 1)
-      profiles = request_ids.map { |id| get_profile(id) }.compact
-      profiles
+      # If Redis is not available, return empty array
+      return [] unless redis
+
+      begin
+        request_ids = redis.zrevrange("rails_profiler:profiles", offset, offset + limit - 1)
+        profiles = request_ids.map { |id| get_profile(id) }.compact
+        
+        # Filter out any profiles with status < 100 (WebSocket connections like /cable or /hotwire-spark)
+        # This ensures old entries don't appear in the dashboard
+        profiles = profiles.reject { |p| p[:status].to_i < 100 }
+        
+        profiles
+      rescue => e
+        puts "[RailsProfiler] Redis error getting profiles: #{e.class.name} - #{e.message}"
+        return []
+      end
     end
 
     def self.get_profile(request_id)
-      key = "rails_profiler:profile:#{request_id}"
-      data = redis.get(key)
-      data ? JSON.parse(data, symbolize_names: true) : nil
+      # If Redis is not available, return nil
+      return nil unless redis
+
+      begin
+        key = "rails_profiler:profile:#{request_id}"
+        data = redis.get(key)
+        data ? JSON.parse(data, symbolize_names: true) : nil
+      rescue => e
+        puts "[RailsProfiler] Redis error getting profile: #{e.class.name} - #{e.message}"
+        nil
+      end
     end
 
     def self.get_summary_stats
-      total_profiles = redis.zcard("rails_profiler:profiles")
-      latest_profiles = get_profiles(limit: 100)
+      # If Redis is not available, return empty hash
+      return {} unless redis
       
-      return {} if latest_profiles.empty?
+      begin
+        total_profiles = redis.zcard("rails_profiler:profiles")
+        latest_profiles = get_profiles(limit: 100)
+        
+        return {} if latest_profiles.empty?
 
-      avg_duration = latest_profiles.sum { |p| p[:duration] } / latest_profiles.size
-      avg_queries = latest_profiles.sum { |p| p[:query_count] } / latest_profiles.size
-      avg_query_time = latest_profiles.sum { |p| p[:total_query_time] } / latest_profiles.size
+        avg_duration = latest_profiles.sum { |p| p[:duration] } / latest_profiles.size
+        avg_queries = latest_profiles.sum { |p| p[:query_count] } / latest_profiles.size
+        avg_query_time = latest_profiles.sum { |p| p[:total_query_time] } / latest_profiles.size
 
-      {
-        total_profiles: total_profiles,
-        avg_duration: avg_duration,
-        avg_queries: avg_queries,
-        avg_query_time: avg_query_time,
-        latest_profiles: latest_profiles.first(20)
-      }
+        {
+          total_profiles: total_profiles,
+          avg_duration: avg_duration,
+          avg_queries: avg_queries,
+          avg_query_time: avg_query_time,
+          latest_profiles: latest_profiles.first(20)
+        }
+      rescue => e
+        puts "[RailsProfiler] Redis error getting summary stats: #{e.class.name} - #{e.message}"
+        return {}
+      end
     end
 
     private
@@ -120,6 +155,9 @@ module RailsProfiler
 
   class DatabaseStorage
     def self.store_profile(data)
+      # Skip profiles with status < 100 (WebSocket connections like /cable or /hotwire-spark)
+      return if data[:status].to_i < 100
+      
       # Convert data hash to a format suitable for database storage
       profile_data = {
         request_id: data[:request_id],
@@ -143,15 +181,17 @@ module RailsProfiler
         additional_data: data[:additional_data].to_json
       }
 
-      return if data[:status] < 100
-
       # Find existing record or create new one
       profile = Profile.find_or_initialize_by(request_id: data[:request_id])
       profile.update!(profile_data)
     end
 
     def self.get_profiles(limit: 100, offset: 0)
-      Profile.order(started_at: :desc).limit(limit).offset(offset).map do |profile|
+      Profile.where("status >= 100")
+             .order(started_at: :desc)
+             .limit(limit)
+             .offset(offset)
+             .map do |profile|
         # Convert database record back to the format expected by the application
         {
           request_id: profile.request_id,
@@ -206,7 +246,8 @@ module RailsProfiler
     end
 
     def self.get_summary_stats
-      total_profiles = Profile.count
+      # Use filtered count for consistency with Redis implementation
+      total_profiles = Profile.where("status >= 100").count
       latest_profiles = get_profiles(limit: 50)
       
       return {} if latest_profiles.empty?
@@ -214,9 +255,10 @@ module RailsProfiler
       # Aggregate endpoints like Skylight does
       endpoints = aggregate_endpoints
 
-      avg_duration = Profile.average(:duration).to_f
-      avg_queries = Profile.average(:query_count).to_f
-      avg_query_time = Profile.average(:total_query_time).to_f
+      # Calculate averages based on filtered profiles
+      avg_duration = Profile.where("status >= 100").average(:duration).to_f
+      avg_queries = Profile.where("status >= 100").average(:query_count).to_f
+      avg_query_time = Profile.where("status >= 100").average(:total_query_time).to_f
 
       {
         total_profiles: total_profiles,
@@ -230,8 +272,9 @@ module RailsProfiler
     
     # Similar to Skylight's endpoint aggregation
     def self.aggregate_endpoints
-      # Group by endpoint_name and get performance metrics
+      # Group by endpoint_name and get performance metrics, filtering out status < 100
       endpoint_stats = Profile.where.not(endpoint_name: nil)
+                              .where("status >= 100")
                               .group(:endpoint_name)
                               .select(
                                 "endpoint_name, 

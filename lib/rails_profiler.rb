@@ -1,11 +1,15 @@
 require "rails_profiler/version"
 require "rails_profiler/configuration"
+require "rails_profiler/redis_patch" # Load the Redis patch early
 require "rails_profiler/engine"
 require "rails_profiler/middleware"
 require "rails_profiler/profiler"
 require "rails_profiler/query_tracker"
 require "rails_profiler/code_profiler"
 require "rails_profiler/storage"
+
+# Apply the Redis patch immediately before any Redis operations
+RailsProfiler::RedisPatch.apply!
 
 # Add detection of mount path
 module ActionDispatch
