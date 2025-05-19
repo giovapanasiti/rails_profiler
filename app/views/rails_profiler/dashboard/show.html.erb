@@ -1,0 +1,59 @@
+<div class="profile-detail">
+  <h1>Profile Details</h1>
+  
+  <div class="profile-header">
+    <div class="profile-info">
+      <h3>Request ID: <%= @profile[:request_id] %></h3>
+      <p><strong>Started:</strong> <%= @profile[:started_at] %></p>
+      <p><strong>Duration:</strong> <%= @profile[:duration].round(2) %>ms</p>
+      <p><strong>Status:</strong> <%= @profile[:response_status] %></p>
+    </div>
+  </div>
+
+  <div class="profile-sections">
+    <div class="section">
+      <h3>Database Queries (<%= @profile[:queries].size %>)</h3>
+      <div class="queries-list">
+        <% @profile[:queries].each_with_index do |query, index| %>
+          <div class="query-item">
+            <div class="query-header">
+              <span class="query-number">#<%= index + 1 %></span>
+              <span class="query-duration"><%= query[:duration].round(2) %>ms</span>
+              <span class="query-name"><%= query[:name] %></span>
+            </div>
+            <div class="query-sql">
+              <code><%= query[:sql] %></code>
+            </div>
+            <% if query[:backtrace] %>
+              <details class="query-backtrace">
+                <summary>Backtrace</summary>
+                <pre><%= query[:backtrace].join("\n") %></pre>
+              </details>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Code Profiles (<%= @profile[:profiles].size %>)</h3>
+      <div class="profiles-list">
+        <% @profile[:profiles].each_with_index do |code_profile, index| %>
+          <div class="profile-item">
+            <div class="profile-header">
+              <span class="profile-number">#<%= index + 1 %></span>
+              <span class="profile-duration"><%= code_profile[:duration].round(2) %>ms</span>
+              <span class="profile-name"><%= code_profile[:name] %></span>
+            </div>
+            <% if code_profile[:backtrace] %>
+              <details class="profile-backtrace">
+                <summary>Backtrace</summary>
+                <pre><%= code_profile[:backtrace].join("\n") %></pre>
+              </details>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

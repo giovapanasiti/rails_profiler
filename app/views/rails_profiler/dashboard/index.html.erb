@@ -1,0 +1,58 @@
+<div class="dashboard">
+  <h1>Rails Profiler Dashboard</h1>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <h3>Total Profiles</h3>
+      <div class="stat-value"><%= @stats[:total_profiles] || 0 %></div>
+    </div>
+    <div class="stat-card">
+      <h3>Avg Response Time</h3>
+      <div class="stat-value"><%= (@stats[:avg_duration] || 0).round(2) %>ms</div>
+    </div>
+    <div class="stat-card">
+      <h3>Avg Queries</h3>
+      <div class="stat-value"><%= (@stats[:avg_queries] || 0).round(1) %></div>
+    </div>
+    <div class="stat-card">
+      <h3>Avg Query Time</h3>
+      <div class="stat-value"><%= (@stats[:avg_query_time] || 0).round(2) %>ms</div>
+    </div>
+  </div>
+
+  <div class="recent-profiles">
+    <h2>Recent Profiles</h2>
+    <div class="profiles-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Request ID</th>
+            <th>Started At</th>
+            <th>Duration</th>
+            <th>Queries</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @profiles.each do |profile| %>
+            <tr>
+              <td><%= profile[:request_id][0..8] %>...</td>
+              <td><%= profile[:started_at] %></td>
+              <td><%= profile[:duration].round(2) %>ms</td>
+              <td><%= profile[:query_count] %></td>
+              <td>
+                <span class="status-badge status-<%= profile[:response_status] %>">
+                  <%= profile[:response_status] %>
+                </span>
+              </td>
+              <td>
+                <%= link_to "View", rails_profiler.profile_path(profile[:request_id]), class: "btn btn-sm" %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
