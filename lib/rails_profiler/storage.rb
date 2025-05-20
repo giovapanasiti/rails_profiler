@@ -167,8 +167,8 @@ module RailsProfiler
 
       begin
         # Convert times to floats for Redis comparison
-        start_time_float = start_time.to_f
-        end_time_float = end_time.to_f
+        start_time_float = start_time
+        end_time_float = end_time
         
         # Convert interval to seconds for calculation
         interval_seconds = case interval
@@ -202,7 +202,9 @@ module RailsProfiler
           next unless profile_data && profile_data[:status].to_i >= 100
           
           # Calculate bucket timestamp (floor to nearest interval)
-          timestamp = profile_data[:started_at].to_f
+          timestamp = profile_data[:started_at]
+
+          puts "[RailsProfiler] Processing profile with request_id: #{id}, timestamp: #{timestamp}"
           
           # Special handling for day view to ensure we bucket by hour properly
           if is_day_view
@@ -225,9 +227,9 @@ module RailsProfiler
           
           # Add profile data to bucket
           time_buckets[bucket_time][:count] += 1
-          time_buckets[bucket_time][:total_duration] += profile_data[:duration].to_f
-          time_buckets[bucket_time][:total_query_count] += profile_data[:query_count].to_f
-          time_buckets[bucket_time][:total_query_time] += profile_data[:total_query_time].to_f
+          time_buckets[bucket_time][:total_duration] += profile_data[:duration]
+          time_buckets[bucket_time][:total_query_count] += profile_data[:query_count]
+          time_buckets[bucket_time][:total_query_time] += profile_data[:total_query_time]
         end
         
         # Fill in missing buckets in the time range
@@ -548,9 +550,9 @@ module RailsProfiler
           
           # Add profile data to the bucket
           time_buckets[bucket_time][:count] += 1
-          time_buckets[bucket_time][:total_duration] += profile.duration.to_f
-          time_buckets[bucket_time][:total_query_count] += profile.query_count.to_f
-          time_buckets[bucket_time][:total_query_time] += profile.total_query_time.to_f
+          time_buckets[bucket_time][:total_duration] += profile.duration
+          time_buckets[bucket_time][:total_query_count] += profile.query_count
+          time_buckets[bucket_time][:total_query_time] += profile.total_query_time
         end
         
         # Fill in any missing buckets in the range

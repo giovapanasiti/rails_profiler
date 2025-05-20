@@ -284,13 +284,15 @@ module RailsProfiler
         end_time: end_time,
         interval: interval
       )
+
+      
       
       # Format for charts
       @volume_data = []
       @response_time_data = []
       
       # Define the minimum valid timestamp (e.g., year 2020)
-      min_valid_timestamp = Time.new(2020, 1, 1)
+      min_valid_timestamp = Time.new(1900, 1, 1)
       
       # Filter and validate time series data before processing
       valid_time_series = time_series.select do |point|
