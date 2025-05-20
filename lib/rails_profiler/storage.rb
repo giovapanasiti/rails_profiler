@@ -40,6 +40,24 @@ module RailsProfiler
         DatabaseStorage.get_summary_stats
       end
     end
+    
+    def self.get_time_series_data(start_time:, end_time:, interval:)
+      case RailsProfiler.config.storage_backend
+      when :redis
+        RedisStorage.get_time_series_data(start_time: start_time, end_time: end_time, interval: interval)
+      when :database
+        DatabaseStorage.get_time_series_data(start_time: start_time, end_time: end_time, interval: interval)
+      end
+    end
+    
+    def self.get_profiles_by_endpoint(endpoint_name, limit: 100)
+      case RailsProfiler.config.storage_backend
+      when :redis
+        RedisStorage.get_profiles_by_endpoint(endpoint_name, limit: limit)
+      when :database
+        DatabaseStorage.get_profiles_by_endpoint(endpoint_name, limit: limit)
+      end
+    end
   end
 
   class RedisStorage
@@ -140,6 +158,115 @@ module RailsProfiler
       rescue => e
         puts "[RailsProfiler] Redis error getting summary stats: #{e.class.name} - #{e.message}"
         return {}
+      end
+    end
+    
+    def self.get_time_series_data(start_time:, end_time:, interval:)
+      # If Redis is not available, return empty array
+      return [] unless redis
+
+      begin
+        # Convert times to floats for Redis comparison
+        start_time_float = start_time.to_f
+        end_time_float = end_time.to_f
+        
+        # Convert interval to seconds for calculation
+        interval_seconds = case interval
+                          when ActiveSupport::Duration
+                            interval.to_i
+                          else
+                            5.minutes.to_i # Default interval
+                          end
+
+        # Get all profile IDs within the time range using Redis ZRANGEBYSCORE
+        profile_ids = redis.zrangebyscore(
+          "rails_profiler:profiles", 
+          start_time_float, 
+          end_time_float
+        )
+        
+        # Initialize buckets for time series data
+        time_buckets = {}
+        
+        # Process each profile and group into time buckets
+        profile_ids.each do |id|
+          profile_data = get_profile(id)
+          next unless profile_data && profile_data[:status].to_i >= 100
+          
+          # Calculate bucket timestamp (floor to nearest interval)
+          timestamp = profile_data[:started_at].to_f
+          bucket_time = (timestamp.to_i / interval_seconds) * interval_seconds
+          
+          # Initialize the bucket if needed
+          time_buckets[bucket_time] ||= { 
+            count: 0, 
+            total_duration: 0, 
+            total_query_count: 0, 
+            total_query_time: 0 
+          }
+          
+          # Add profile data to bucket
+          time_buckets[bucket_time][:count] += 1
+          time_buckets[bucket_time][:total_duration] += profile_data[:duration].to_f
+          time_buckets[bucket_time][:total_query_count] += profile_data[:query_count].to_f
+          time_buckets[bucket_time][:total_query_time] += profile_data[:total_query_time].to_f
+        end
+        
+        # Fill in missing buckets in the time range
+        current_time = start_time_float.to_i
+        while current_time <= end_time_float.to_i
+          bucket_time = (current_time / interval_seconds) * interval_seconds
+          time_buckets[bucket_time] ||= { 
+            count: 0, 
+            total_duration: 0, 
+            total_query_count: 0, 
+            total_query_time: 0 
+          }
+          current_time += interval_seconds
+        end
+        
+        # Convert to array format and calculate averages
+        result = time_buckets.map do |timestamp, data|
+          avg_duration = data[:count] > 0 ? data[:total_duration] / data[:count] : 0
+          avg_query_count = data[:count] > 0 ? data[:total_query_count] / data[:count] : 0
+          avg_query_time = data[:count] > 0 ? data[:total_query_time] / data[:count] : 0
+          
+          {
+            timestamp: Time.at(timestamp),
+            count: data[:count],
+            avg_duration: avg_duration,
+            avg_queries: avg_query_count,
+            avg_query_time: avg_query_time
+          }
+        end
+        
+        # Sort by timestamp
+        result.sort_by { |item| item[:timestamp] }
+      rescue => e
+        puts "[RailsProfiler] Redis error getting time series data: #{e.class.name} - #{e.message}"
+        puts e.backtrace.join("\n")
+        []
+      end
+    end
+
+    def self.get_profiles_by_endpoint(endpoint_name, limit: 100)
+      # If Redis is not available, return empty array
+      return [] unless redis
+
+      begin
+        # Get all recent profiles and filter by endpoint
+        all_profiles = get_profiles(limit: 500)  # Get more than we need for filtering
+        
+        # Filter profiles that match the requested endpoint
+        matching_profiles = all_profiles.select do |profile| 
+          profile[:endpoint_name] == endpoint_name
+        end
+        
+        # Return the limited number of profiles
+        matching_profiles.take(limit)
+      rescue => e
+        puts "[RailsProfiler] Redis error getting profiles by endpoint: #{e.class.name} - #{e.message}"
+        []
       end
     end
 
@@ -346,6 +473,116 @@ module RailsProfiler
     def self.cleanup_old_profiles
       retention_date = RailsProfiler.config.retention_days.days.ago
       Profile.where('started_at < ?', retention_date).delete_all
+    end
+    
+    def self.get_time_series_data(start_time:, end_time:, interval:)
+      begin
+        # Convert interval to seconds for calculation
+        interval_seconds = case interval
+                          when ActiveSupport::Duration
+                            interval.to_i
+                          else
+                            5.minutes.to_i # Default interval
+                          end
+        
+        # Query all profiles within the time range
+        profiles = Profile.where("started_at >= ? AND started_at <= ?", start_time, end_time)
+                          .where("status >= 100")
+                          .select(:started_at, :duration, :query_count, :total_query_time)
+        
+        # Group profiles by time buckets
+        time_buckets = {}
+        
+        profiles.each do |profile|
+          # Calculate the bucket timestamp (floor to the nearest interval)
+          bucket_time = (profile.started_at.to_i / interval_seconds) * interval_seconds
+          
+          # Initialize the bucket if needed
+          time_buckets[bucket_time] ||= { 
+            count: 0, 
+            total_duration: 0, 
+            total_query_count: 0, 
+            total_query_time: 0 
+          }
+          
+          # Add profile data to the bucket
+          time_buckets[bucket_time][:count] += 1
+          time_buckets[bucket_time][:total_duration] += profile.duration.to_f
+          time_buckets[bucket_time][:total_query_count] += profile.query_count.to_f
+          time_buckets[bucket_time][:total_query_time] += profile.total_query_time.to_f
+        end
+        
+        # Fill in any missing buckets in the range
+        current_time = start_time.to_i
+        while current_time <= end_time.to_i
+          time_buckets[current_time] ||= { 
+            count: 0, 
+            total_duration: 0, 
+            total_query_count: 0, 
+            total_query_time: 0 
+          }
+          current_time += interval_seconds
+        end
+        
+        # Convert to array and sort by timestamp
+        result = time_buckets.map do |timestamp, data|
+          avg_duration = data[:count] > 0 ? data[:total_duration] / data[:count] : 0
+          avg_query_count = data[:count] > 0 ? data[:total_query_count] / data[:count] : 0
+          avg_query_time = data[:count] > 0 ? data[:total_query_time] / data[:count] : 0
+          
+          {
+            timestamp: Time.at(timestamp),
+            count: data[:count],
+            avg_duration: avg_duration,
+            avg_queries: avg_query_count,
+            avg_query_time: avg_query_time
+          }
+        end
+        
+        result.sort_by { |item| item[:timestamp] }
+      rescue => e
+        puts "[RailsProfiler] Database error getting time series data: #{e.class.name} - #{e.message}"
+        puts e.backtrace.join("\n")
+        return []
+      end
+    end
+    
+    def self.get_profiles_by_endpoint(endpoint_name, limit: 100)
+      begin
+        profiles = Profile.where(endpoint_name: endpoint_name)
+                          .where("status >= 100")
+                          .order(started_at: :desc)
+                          .limit(limit)
+                          .map do |profile|
+          # Convert database record to the format expected by the application
+          {
+            request_id: profile.request_id,
+            url: profile.url,
+            method: profile.method,
+            path: profile.path,
+            controller: profile.controller,
+            action: profile.action,
+            endpoint_name: profile.endpoint_name,
+            format: profile.format,
+            status: profile.status,
+            duration: profile.duration,
+            query_count: profile.query_count,
+            total_query_time: profile.total_query_time,
+            view_time: profile.view_time,
+            db_time: profile.db_time,
+            ruby_time: profile.ruby_time,
+            started_at: profile.started_at,
+            queries: JSON.parse(profile.queries, symbolize_names: true),
+            segments: JSON.parse(profile.segments, symbolize_names: true),
+            additional_data: JSON.parse(profile.additional_data, symbolize_names: true)
+          }
+        end
+        
+        profiles
+      rescue => e
+        puts "[RailsProfiler] Database error getting profiles by endpoint: #{e.class.name} - #{e.message}"
+        []
+      end
     end
   end
 end

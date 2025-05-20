@@ -4,6 +4,15 @@ module RailsProfiler
       @stats = Storage.get_summary_stats
       @profiles = @stats[:latest_profiles] || []
       @endpoints = @stats[:endpoints] || []
+      
+      # Prepare time-series data for charts
+      prepare_time_series_data
+      
+      # Prepare performance breakdown data
+      prepare_performance_data
+      
+      # Prepare query distribution data
+      prepare_query_distribution
     end
 
     def show
@@ -244,6 +253,117 @@ module RailsProfiler
     end
     
     private
+    
+    def prepare_time_series_data
+      # Get time period from params (default to 'day')
+      period = params[:period] || 'day'
+      
+      case period
+      when 'hour'
+        interval = 5.minutes
+        time_span = 1.hour
+        format = '%H:%M'
+      when 'week'
+        interval = 1.day
+        time_span = 7.days
+        format = '%a'
+      else # 'day'
+        interval = 1.hour
+        time_span = 1.day
+        format = '%H:%M'
+      end
+      
+      end_time = Time.current
+      start_time = end_time - time_span
+      
+      # Get time-series data from storage
+      time_series = Storage.get_time_series_data(
+        start_time: start_time,
+        end_time: end_time,
+        interval: interval
+      )
+      
+      # Format for charts
+      @volume_data = []
+      @response_time_data = []
+      
+      time_series.each do |point|
+        timestamp = point[:timestamp]
+        @volume_data << {
+          timestamp: timestamp,
+          count: point[:count] || 0
+        }
+        
+        @response_time_data << {
+          timestamp: timestamp,
+          avg_duration: point[:avg_duration] || 0
+        }
+      end
+    end
+    
+    def prepare_performance_data
+      # Get performance breakdown for all profiles
+      @performance_data = {
+        'Database' => @stats[:avg_db_time] || 0,
+        'View Rendering' => @stats[:avg_view_time] || 0,
+        'Ruby Code' => @stats[:avg_ruby_time] || 0
+      }
+      
+      # Add external APIs if data exists
+      if @stats[:avg_external_time] && @stats[:avg_external_time] > 0
+        @performance_data['External APIs'] = @stats[:avg_external_time]
+      end
+      
+      # Check if any other significant categories exist in profiles
+      if @profiles.present?
+        # Calculate "other" category if there's a gap
+        total_accounted = @performance_data.values.sum
+        if @stats[:avg_duration] && @stats[:avg_duration] > total_accounted
+          other_time = @stats[:avg_duration] - total_accounted
+          if other_time > 0 && other_time > (@stats[:avg_duration] * 0.05)
+            @performance_data['Other'] = other_time
+          end
+        end
+      end
+    end
+    
+    def prepare_query_distribution
+      # Count query types from recent profiles
+      query_types = { 'SELECT' => 0, 'INSERT' => 0, 'UPDATE' => 0, 'DELETE' => 0, 'OTHER' => 0 }
+      query_count = 0
+      
+      # Get recent profiles for analysis (limit to more recent ones for relevance)
+      recent_profiles = @profiles.presence || Storage.get_profiles(limit: 100)
+      
+      recent_profiles.each do |profile|
+        next unless profile[:queries].is_a?(Array)
+        
+        profile[:queries].each do |query|
+          query_count += 1
+          sql = query[:sql].to_s.upcase
+          
+          if sql.start_with?('SELECT')
+            query_types['SELECT'] += 1
+          elsif sql.start_with?('INSERT')
+            query_types['INSERT'] += 1
+          elsif sql.start_with?('UPDATE')
+            query_types['UPDATE'] += 1
+          elsif sql.start_with?('DELETE')
+            query_types['DELETE'] += 1
+          else
+            query_types['OTHER'] += 1
+          end
+        end
+      end
+      
+      # Only include non-zero values
+      @query_data = query_types.select { |_, count| count > 0 }
+      
+      # If we have no query data, use sample data for visualization
+      if @query_data.empty? || query_count == 0
+        @query_data = nil
+      end
+    end
     
     def format_hotspot_data(data_hash, value_key, limit)
       data_hash.map do |name, data|
