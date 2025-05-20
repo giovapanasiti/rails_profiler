@@ -158,10 +158,8 @@ module RailsProfiler
             alias_method :render_without_profiling, :render
             
             # Update the render method to properly handle all argument types
-            # We support all combinations of arguments that Rails itself supports
-            def render(*args, **kwargs, &block)
+            def render(*args, &block)
               # Get the full template path - use identifier (absolute path) as the primary source
-              # Instead of just the template name, this will capture the full application path
               full_path = identifier
               
               # Clean up the path to make it more readable
@@ -177,16 +175,12 @@ module RailsProfiler
               end
               
               RailsProfiler::CodeProfiler.profile("Render: #{template_name}") do
-                if kwargs.empty?
-                  render_without_profiling(*args, &block)
-                else
-                  render_without_profiling(*args, **kwargs, &block)
-                end
+                # Pass exactly the same arguments to the original method
+                render_without_profiling(*args, &block)
               end
             end
           end
         end
-        
       end
       
       # Setup profiling for configured methods from config.auto_profile_methods

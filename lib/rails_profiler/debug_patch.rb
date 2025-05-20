@@ -3,8 +3,11 @@ module RailsProfiler
     # Override finish method to ensure hotspots are properly generated
     alias_method :original_finish, :finish
     
-    def finish(status, duration = nil)
+    def finish(*args)
       # Get the original data that would be stored
+      status = args.first
+      duration = args.length > 1 ? args[1] : nil
+      
       total_duration = duration || calculate_duration
       
       # Debug what's happening
@@ -13,8 +16,8 @@ module RailsProfiler
       # Make sure we generate hotspots even with limited data
       ensure_hotspots
       
-      # Continue with original implementation
-      original_finish(status, duration)
+      # Continue with original implementation using the same arguments as received
+      original_finish(*args)
     end
     
     private
