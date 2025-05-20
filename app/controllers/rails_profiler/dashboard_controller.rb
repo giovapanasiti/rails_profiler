@@ -216,9 +216,20 @@ module RailsProfiler
       # Get data for the flame graph visualization
       @profile_id = params[:profile_id]
       
+      Rails.logger.debug "[RailsProfiler] flame_graph action called with profile_id: #{@profile_id}"
+      
       if @profile_id
         @profile = Storage.get_profile(@profile_id)
-        @flame_data = prepare_flame_graph_data(@profile) if @profile
+        Rails.logger.debug "[RailsProfiler] Profile found: #{@profile ? 'Yes' : 'No'}"
+        
+        if @profile
+          Rails.logger.debug "[RailsProfiler] Profile has additional_data: #{@profile[:additional_data] ? 'Yes' : 'No'}"
+          if @profile[:additional_data]
+            Rails.logger.debug "[RailsProfiler] Profile has profiles data: #{@profile[:additional_data][:profiles].present? ? 'Yes' : 'No'}"
+          end
+          @flame_data = prepare_flame_graph_data(@profile)
+          Rails.logger.debug "[RailsProfiler] Flame data prepared: #{@flame_data ? @flame_data.size : 'None'}"
+        end
       else
         # Without a specific profile, use the most recent profile with code profiling data
         profiles = Storage.get_profiles(limit: 10)
@@ -230,6 +241,8 @@ module RailsProfiler
       @available_profiles = Storage.get_profiles(limit: 50).select do |p| 
         p[:additional_data] && p[:additional_data][:profiles].present?
       end
+      
+      Rails.logger.debug "[RailsProfiler] Available profiles for dropdown: #{@available_profiles.size}"
     end
     
     def call_graph
@@ -400,28 +413,88 @@ module RailsProfiler
     end
     
     def prepare_flame_graph_data(profile)
-      return nil unless profile && profile[:additional_data] && profile[:additional_data][:profiles].present?
+      Rails.logger.debug "[RailsProfiler] Preparing flame graph data for profile: #{profile&.dig(:request_id)}"
       
-      # Convert the code profiles into a format suitable for flame graph visualization
-      code_profiles = profile[:additional_data][:profiles]
+      # Verify we have required data
+      if !profile
+        Rails.logger.debug "[RailsProfiler] No profile provided to prepare_flame_graph_data"
+        return nil
+      end
+      
+      if !profile[:additional_data].is_a?(Hash)
+        Rails.logger.debug "[RailsProfiler] Profile additional_data is not a hash, it's a: #{profile[:additional_data].class}"
+        return nil
+      end
+      
+      # Check if we have profiles data
+      if !profile[:additional_data][:profiles].present?
+        Rails.logger.debug "[RailsProfiler] No profiles data in additional_data"
+        # Try fallback to older format if available
+        if profile[:additional_data][:methods].present?
+          Rails.logger.debug "[RailsProfiler] Found alternative method data structure"
+          code_profiles = profile[:additional_data][:methods]
+        else
+          return nil
+        end
+      else
+        code_profiles = profile[:additional_data][:profiles]
+      end
+      
+      Rails.logger.debug "[RailsProfiler] Found #{code_profiles.size} methods to visualize"
       
       # Group by method_name and calculate total time
       flame_data = []
+      
       code_profiles.each do |method_name, data|
-        # Skip methods with very small durations to avoid clutter
-        next if data[:total_duration] < 1.0
-        
-        # Create flame graph entry
-        flame_data << {
-          name: method_name,
-          value: data[:total_duration].round(2),
-          method_type: data[:method_type] || 'ruby',
-          count: data[:count]
-        }
+        begin
+          # Handle two possible data structures
+          if data.is_a?(Hash)
+            # Skip methods with very small durations to avoid clutter
+            total_duration = data[:total_duration] || data[:value] || 0
+            next if total_duration < 0.5
+            
+            # Create flame graph entry
+            flame_data << {
+              name: method_name.to_s,
+              value: total_duration.round(2),
+              method_type: data[:method_type] || categorize_method(method_name.to_s),
+              count: data[:count] || 1
+            }
+          elsif data.is_a?(Numeric)
+            # Simple numeric duration value
+            next if data < 0.5
+            
+            flame_data << {
+              name: method_name.to_s,
+              value: data.round(2),
+              method_type: categorize_method(method_name.to_s),
+              count: 1
+            }
+          end
+        rescue => e
+          Rails.logger.error "[RailsProfiler] Error processing method #{method_name}: #{e.message}"
+        end
       end
+      
+      Rails.logger.debug "[RailsProfiler] Generated #{flame_data.size} flame data entries"
       
       # Sort by duration in descending order
       flame_data.sort_by { |item| -item[:value] }
+    end
+    
+    # Helper method to categorize methods based on name patterns
+    def categorize_method(method_name)
+      method_name = method_name.to_s.downcase
+      
+      if method_name.include?('controller') || method_name.end_with?('_action')
+        'controller'
+      elsif method_name.include?('model') || method_name.match?(/active_?record/i)
+        'model'
+      elsif method_name.include?('view') || method_name.include?('template') || method_name.include?('render')
+        'view'
+      else
+        'ruby'
+      end
     end
     
     def prepare_call_graph_data(profile)

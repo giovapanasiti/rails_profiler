@@ -40,11 +40,15 @@
     </div>
     <div class="card-body">
       <div class="flame-graph-container" id="flame-graph"></div>
+      <div class="flame-graph-controls mt-2">
+        <button class="btn btn-sm btn-outline-primary" id="resetFlameGraph">Reset Zoom</button>
+        <button class="btn btn-sm btn-outline-secondary" id="searchFlameGraph">Search</button>
+      </div>
       <div class="legend mt-2">
-        <span class="badge bg-controller mr-2">Controller</span>
-        <span class="badge bg-model mr-2">Model</span>
-        <span class="badge bg-view mr-2">View</span>
-        <span class="badge bg-ruby mr-2">Ruby</span>
+        <span class="badge method-type-controller mr-2">Controller</span>
+        <span class="badge method-type-model mr-2">Model</span>
+        <span class="badge method-type-view mr-2">View</span>
+        <span class="badge method-type-ruby mr-2">Ruby</span>
       </div>
     </div>
   </div>
@@ -105,6 +109,24 @@
 <% content_for :scripts do %>
 <script>
   document.addEventListener('DOMContentLoaded', function() {
+    // Profile dropdown functionality
+    const dropdownToggle = document.querySelector('.dropdown-toggle');
+    const dropdownMenu = document.querySelector('.dropdown-menu');
+    
+    if (dropdownToggle && dropdownMenu) {
+      dropdownToggle.addEventListener('click', function(e) {
+        e.preventDefault();
+        dropdownMenu.classList.toggle('show');
+      });
+      
+      // Close dropdown when clicking outside
+      document.addEventListener('click', function(e) {
+        if (!e.target.matches('.dropdown-toggle') && !e.target.closest('.dropdown-toggle')) {
+          dropdownMenu.classList.remove('show');
+        }
+      });
+    }
+    
     // Method search functionality
     const methodSearch = document.getElementById('method-search');
     if (methodSearch) {
@@ -126,97 +148,182 @@
     // Flame graph visualization
     const flameGraphContainer = document.getElementById('flame-graph');
     if (flameGraphContainer && <%= @flame_data.present? ? 'true' : 'false' %>) {
-      const flameData = <%= raw @flame_data.to_json %>;
+      console.log("Initializing flame graph visualization");
       
-      // Create a D3 flame graph
-      const margin = {top: 10, right: 10, bottom: 10, left: 10};
-      const width = flameGraphContainer.clientWidth - margin.left - margin.right;
-      const height = 350 - margin.top - margin.bottom;
-      
-      // Create SVG
-      const svg = d3.select('#flame-graph')
-        .append('svg')
-        .attr('width', width + margin.left + margin.right)
-        .attr('height', height + margin.top + margin.bottom)
-        .append('g')
-        .attr('transform', `translate(${margin.left}, ${margin.top})`);
+      try {
+        const flameData = <%= raw @flame_data.to_json %>;
+        console.log("Flame data loaded, entries:", flameData.length);
         
-      // Set up scales
-      const x = d3.scaleBand()
-        .domain(flameData.map(d => d.name))
-        .range([0, width])
-        .padding(0.1);
-        
-      const y = d3.scaleLinear()
-        .domain([0, d3.max(flameData, d => d.value)])
-        .nice()
-        .range([height, 0]);
-        
-      // Color scale based on method type
-      const color = d => {
-        switch(d.method_type) {
-          case 'controller': return '#f59e0b';
-          case 'model': return '#0ea5e9';
-          case 'view': return '#ec4899';
-          default: return '#8b5cf6';
+        // Check if flame data is empty
+        if (!flameData || flameData.length === 0) {
+          console.error("No flame data available to visualize");
+          flameGraphContainer.innerHTML = '<div class="alert alert-warning">No method data available to visualize for this profile.</div>';
+          return;
         }
-      };
-      
-      // Create bars
-      svg.selectAll('.bar')
-        .data(flameData)
-        .enter()
-        .append('rect')
-        .attr('class', 'bar')
-        .attr('x', d => x(d.name))
-        .attr('y', d => y(d.value))
-        .attr('width', x.bandwidth())
-        .attr('height', d => height - y(d.value))
-        .attr('fill', d => color(d))
-        .attr('opacity', 0.8)
-        .on('mouseover', function(event, d) {
-          d3.select(this).attr('opacity', 1);
-          
-          // Create tooltip
-          const tooltip = d3.select('body')
-            .append('div')
-            .attr('class', 'tooltip')
-            .style('position', 'absolute')
-            .style('background', 'rgba(0, 0, 0, 0.8)')
-            .style('color', 'white')
-            .style('padding', '8px')
-            .style('border-radius', '4px')
-            .style('pointer-events', 'none')
-            .style('z-index', 100);
-            
-          tooltip.html(`
-            <div><strong>${d.name}</strong></div>
-            <div>Type: ${d.method_type}</div>
-            <div>Duration: ${d.value.toFixed(2)} ms</div>
-            <div>Calls: ${d.count}</div>
-          `);
-          
-          // Position tooltip
-          tooltip.style('left', (event.pageX + 10) + 'px')
-                 .style('top', (event.pageY - 28) + 'px');
-        })
-        .on('mouseout', function() {
-          d3.select(this).attr('opacity', 0.8);
-          d3.selectAll('.tooltip').remove();
+        
+        // Transform the flat data into a hierarchical structure for the flame graph
+        const rootNode = {
+          name: "root",
+          value: 0,
+          children: []
+        };
+        
+        // Create a lookup map for method types
+        const methodTypes = {};
+        flameData.forEach(method => {
+          methodTypes[method.name] = method.method_type || 'ruby';
         });
         
-      // Add x-axis
-      svg.append('g')
-        .attr('transform', `translate(0, ${height})`)
-        .call(d3.axisBottom(x))
-        .selectAll('text')
-        .attr('transform', 'translate(-10,0)rotate(-45)')
-        .style('text-anchor', 'end')
-        .style('font-size', '8px');
+        // Sort methods by value (descending) to get the most expensive methods first
+        console.log("Sorting methods by execution time");
+        const sortedMethods = [...flameData].sort((a, b) => b.value - a.value);
         
-      // Add y-axis
-      svg.append('g')
-        .call(d3.axisLeft(y).ticks(5).tickFormat(d => d + ' ms'));
+        // For each method, create a node in the hierarchy
+        console.log("Building hierarchical structure");
+        sortedMethods.forEach(method => {
+          // Skip methods with very small durations
+          if (method.value < 0.1) return;
+          
+          // Create a path based on method name (splitting by periods, colons, etc)
+          let parts = method.name.split(/[\.#:]/);
+          
+          // If method name doesn't have parts, use it directly
+          if (parts.length <= 1) {
+            parts = [method.method_type || 'ruby', method.name];
+          }
+          
+          // Begin at the root
+          let currentNode = rootNode;
+          
+          // Traverse/build the path
+          for (let i = 0; i < parts.length; i++) {
+            let part = parts[i];
+            if (!part) part = '(anonymous)';
+            
+            // For the last part, use the method's value
+            if (i === parts.length - 1) {
+              const newNode = {
+                name: part,
+                value: method.value,
+                count: method.count,
+                methodType: method.method_type || 'ruby',
+                fullName: method.name
+              };
+              
+              currentNode.children = currentNode.children || [];
+              currentNode.children.push(newNode);
+              
+              // Add to parent's value for proper sizing
+              if (i > 0) {
+                currentNode.value = (currentNode.value || 0) + method.value;
+              }
+            } else {
+              // For intermediate parts, find or create a node
+              let found = false;
+              if (currentNode.children) {
+                for (const child of currentNode.children) {
+                  if (child.name === part) {
+                    currentNode = child;
+                    found = true;
+                    break;
+                  }
+                }
+              } else {
+                currentNode.children = [];
+              }
+              
+              if (!found) {
+                const newNode = {
+                  name: part,
+                  children: [],
+                  methodType: methodTypes[part] || 'ruby'
+                };
+                currentNode.children.push(newNode);
+                currentNode = newNode;
+              }
+            }
+          }
+        });
+        
+        console.log("Root node with children created:", rootNode);
+        
+        // Create color map based on method types
+        const colorMap = {
+          controller: '#f59e0b', // Amber
+          model: '#0ea5e9',      // Sky Blue
+          view: '#ec4899',       // Pink
+          ruby: '#8b5cf6'        // Purple
+        };
+        
+        // Check that d3.flamegraph is available
+        if (typeof d3.flamegraph !== 'function') {
+          console.error("d3.flamegraph is not available. Make sure d3-flame-graph library is loaded correctly.");
+          flameGraphContainer.innerHTML = '<div class="alert alert-danger">Error: Flame graph library not loaded correctly.</div>';
+          return;
+        }
+        
+        try {
+          // Create the flame graph
+          console.log("Creating flame graph object");
+          const flamegraph = d3.flamegraph()
+            .width(flameGraphContainer.clientWidth)
+            .height(350)
+            .tooltip(true)
+            .sort(true)
+            .title('')
+            .differential(false)
+            .inverted(false)
+            .selfValue(false)
+            .color((d) => colorMap[d.data.methodType] || colorMap.ruby);
+          
+          // Create flame graph SVG
+          console.log("Creating SVG element");
+          const svg = d3.select('#flame-graph')
+            .append('svg')
+            .attr('width', '100%')
+            .attr('height', '100%');
+            
+          console.log("Rendering flame graph");
+          // Render flame graph with the hierarchical data
+          svg.datum(rootNode).call(flamegraph);
+          console.log("Flame graph rendered successfully");
+          
+          // Add reset zoom button functionality
+          document.getElementById('resetFlameGraph').addEventListener('click', function() {
+            flamegraph.resetZoom();
+          });
+          
+          // Add search functionality
+          document.getElementById('searchFlameGraph').addEventListener('click', function() {
+            const term = prompt('Enter method name to search:');
+            if (term) {
+              flamegraph.search(term);
+            }
+          });
+          
+          // Highlight methods in flame graph when hovering over table rows
+          const methodRows = document.querySelectorAll('tr.method-row');
+          methodRows.forEach(function(row) {
+            row.addEventListener('mouseenter', function() {
+              const methodName = this.getAttribute('data-method-name');
+              flamegraph.search(methodName);
+            });
+            
+            row.addEventListener('mouseleave', function() {
+              flamegraph.clear();
+            });
+          });
+        } catch (e) {
+          console.error("Error rendering flame graph:", e);
+          flameGraphContainer.innerHTML = '<div class="alert alert-danger">Error rendering flame graph: ' + e.message + '</div>';
+        }
+      } catch (e) {
+        console.error("Error initializing flame graph:", e);
+        flameGraphContainer.innerHTML = '<div class="alert alert-danger">Error initializing flame graph: ' + e.message + '</div>';
+      }
+    } else if (flameGraphContainer) {
+      console.error("Flame graph container exists but no flame data available");
+      flameGraphContainer.innerHTML = '<div class="alert alert-warning">No flame data available for visualization.</div>';
     }
   });
 </script>

@@ -8,8 +8,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <!-- Chart.js for improved data visualization - version 3.9.1 -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-  <!-- Flame Chart Library -->
+  <!-- D3.js - required for flame graph and other visualizations -->
   <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <!-- d3-flame-graph library -->
+  <script src="https://cdn.jsdelivr.net/npm/d3-flame-graph@4.1.3/dist/d3-flamegraph.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/d3-flame-graph@4.1.3/dist/d3-flamegraph.min.css" rel="stylesheet">
   <!-- Added for better tooltip handling -->
   <script src="https://unpkg.com/@popperjs/core@2"></script>
   <!-- Added for data export -->
@@ -735,6 +738,65 @@
     
     .theme-toggle:hover {
       transform: scale(1.1);
+    }
+    
+    /* Dropdowns */
+    .dropdown {
+      position: relative;
+      display: inline-block;
+    }
+    
+    .dropdown-toggle {
+      cursor: pointer;
+    }
+    
+    .dropdown-menu {
+      position: absolute;
+      right: 0;
+      top: 100%;
+      background-color: var(--card-bg);
+      min-width: 180px;
+      border-radius: 0.375rem;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+      z-index: 100;
+      margin-top: 0.25rem;
+      padding: 0.5rem 0;
+      border: 1px solid var(--border-color);
+      display: none;
+    }
+    
+    .dropdown-menu.show {
+      display: block;
+    }
+    
+    .dropdown-item {
+      display: block;
+      padding: 0.5rem 1rem;
+      text-decoration: none;
+      color: var(--text-color);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .dropdown-item:hover {
+      background-color: var(--light-gray);
+    }
+    
+    .dropdown-item.disabled {
+      color: var(--gray-color);
+      pointer-events: none;
+      opacity: 0.7;
+    }
+    
+    /* Dark theme adjustments */
+    [data-theme="dark"] .dropdown-menu {
+      background-color: var(--card-bg);
+      border-color: var(--border-color);
+    }
+    
+    [data-theme="dark"] .dropdown-item:hover {
+      background-color: var(--light-gray);
     }
     
     /* Export options */
