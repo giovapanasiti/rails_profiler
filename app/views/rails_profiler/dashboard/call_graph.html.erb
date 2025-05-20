@@ -50,9 +50,14 @@
   document.addEventListener('DOMContentLoaded', function() {
     // Call graph visualization using D3 force-directed graph
     const graphContainer = document.getElementById('call-graph');
+
+      const graphData = <%= raw @call_graph_data.to_json %>;
+      console.log("Graph data:", graphData); // Debug output
+
     
     if (graphContainer && <%= @call_graph_data.present? ? 'true' : 'false' %>) {
-      const graphData = <%= raw @call_graph_data.to_json %>;
+      // const graphData = <%= raw @call_graph_data.to_json %>;
+      // console.log("Graph data:", graphData); // Debug output
       
       // Initialize zoom
       let currentZoom = 1;
@@ -82,8 +87,15 @@
         
       // Define node size based on value
       function nodeSize(d) {
-        const size = d3.sum(graphData.links.filter(l => l.source.id === d.id), l => l.value);
-        return Math.max(Math.sqrt(size) * 3, 8);
+        // Calculate size based on total outgoing links
+        return Math.max(Math.sqrt(getNodeLinkCount(d)) * 3, 8);
+      }
+      
+      // Count links for node sizing
+      function getNodeLinkCount(node) {
+        return d3.sum(graphData.links.filter(l => l.source.id === node.id || 
+                                                 (typeof l.source === 'string' && l.source === node.id)), 
+                      l => l.value || 1);
       }
       
       // Create links
@@ -94,7 +106,7 @@
         .data(graphData.links)
         .join('line')
         .attr('class', 'call-graph-link')
-        .attr('stroke-width', d => Math.sqrt(d.value));
+        .attr('stroke-width', d => Math.sqrt(d.value || 1));
         
       // Create nodes
       const node = g.append('g')
@@ -120,23 +132,26 @@
         
       // Add tooltips
       node.append('title')
-        .text(d => `${d.id}\nCalls: ${d3.sum(graphData.links.filter(l => l.source.id === d.id), l => l.value)}`);
+        .text(d => {
+          const calls = getNodeLinkCount(d);
+          return `${d.id}\nCalls: ${calls}`;
+        });
         
       // Update positions on each tick
       simulation.on('tick', () => {
         link
-          .attr('x1', d => d.source.x)
-          .attr('y1', d => d.source.y)
-          .attr('x2', d => d.target.x)
-          .attr('y2', d => d.target.y);
+          .attr('x1', d => d.source.x || 0)
+          .attr('y1', d => d.source.y || 0)
+          .attr('x2', d => d.target.x || 0)
+          .attr('y2', d => d.target.y || 0);
           
         node
-          .attr('cx', d => d.x = Math.max(nodeSize(d), Math.min(width - nodeSize(d), d.x)))
-          .attr('cy', d => d.y = Math.max(nodeSize(d), Math.min(height - nodeSize(d), d.y)));
+          .attr('cx', d => d.x = Math.max(nodeSize(d), Math.min(width - nodeSize(d), d.x || width/2)))
+          .attr('cy', d => d.y = Math.max(nodeSize(d), Math.min(height - nodeSize(d), d.y || height/2)));
           
         label
-          .attr('x', d => d.x)
-          .attr('y', d => d.y - nodeSize(d) - 5);
+          .attr('x', d => d.x || 0)
+          .attr('y', d => d.y - nodeSize(d) - 5 || 0);
       });
       
       // Node color function
