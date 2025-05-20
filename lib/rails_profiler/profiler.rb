@@ -360,6 +360,8 @@ module RailsProfiler
       # Track action controller events
       @subscribers << ActiveSupport::Notifications.subscribe("process_action.action_controller") do |*args|
         event = ActiveSupport::Notifications::Event.new(*args)
+        # Update controller time counter
+        @controller_time += event.duration
         add_event({
           name: "Controller action",
           category: "controller",
