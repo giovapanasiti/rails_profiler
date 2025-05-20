@@ -44,6 +44,19 @@
   </div>
 
   <div class="timeline-section">
+
+    <div class="section-header">
+        
+        <div class="visualization-buttons">
+          <a href="<%= rails_profiler.flame_graph_path() %>?profile_id=<%= params[:id] %>" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-fire"></i> Flame Graph
+          </a>
+          <a href="<%= rails_profiler.call_graph_path(profile_id: params[:id]) %>" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-project-diagram"></i> Call Graph
+          </a>
+        </div>
+      </div>
+
     <h3 class="section-header">Request Timeline</h3>
     
     <div class="time-scale">
@@ -206,6 +219,18 @@
     <div class="code-profiles-section">
       <div class="section-header">
         <h2>Code Hotspots</h2>
+        
+        <div class="visualization-buttons">
+          <a href="<%= rails_profiler.flame_graph_path(@profile[:id]) %>" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-fire"></i> Flame Graph
+          </a>
+          <a href="<%= rails_profiler.call_graph_path(@profile[:id]) %>" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-project-diagram"></i> Call Graph
+          </a>
+          <a href="<%= rails_profiler.hotspots_path(@profile[:id]) %>" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-temperature-high"></i> Detailed Hotspots
+          </a>
+        </div>
       </div>
       
       <div class="card">

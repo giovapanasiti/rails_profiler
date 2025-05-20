@@ -1,23 +1,7 @@
 <div class="page-header">
   <h1 class="page-title">Flame Graph</h1>
   <div class="page-actions">
-    <div class="dropdown">
-      <button class="btn btn-secondary dropdown-toggle">
-        <%= @profile ? "#{@profile[:controller]}##{@profile[:action]}" : "Select Profile" %>
-        <i class="fas fa-chevron-down ml-1"></i>
-      </button>
-      <div class="dropdown-menu">
-        <% if @available_profiles.present? %>
-          <% @available_profiles.each do |profile| %>
-            <a href="<%= flame_graph_path(profile_id: profile[:request_id]) %>" class="dropdown-item">
-              <%= profile[:controller] %>#<%= profile[:action] %> (<%= profile[:request_id][0..7] %>)
-            </a>
-          <% end %>
-        <% else %>
-          <span class="dropdown-item disabled">No profiles available</span>
-        <% end %>
-      </div>
-    </div>
+    
   </div>
 </div>
 
