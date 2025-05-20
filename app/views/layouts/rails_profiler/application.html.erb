@@ -6,9 +6,17 @@
   <title>Rails Profiler</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js for improved data visualization -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+  <!-- Flame Chart Library -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <!-- Added for better tooltip handling -->
+  <script src="https://unpkg.com/@popperjs/core@2"></script>
+  <!-- Added for data export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
   <style>
     :root {
-      /* Main colors */
+      /* Main colors - Light theme (default) */
       --primary-color: #4f46e5;
       --primary-dark: #3730a3;
       --primary-light: #a5b4fc;
@@ -18,6 +26,10 @@
       --dark-gray: #374151;
       --black: #111827;
       --white: #ffffff;
+      --bg-color: #f9fafb;
+      --card-bg: #ffffff;
+      --text-color: #374151;
+      --border-color: #e5e7eb;
       
       /* Status colors */
       --success-color: #10b981;
@@ -33,6 +45,28 @@
       /* Fonts */
       --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     }
+
+    /* Dark mode colors */
+    [data-theme="dark"] {
+      --primary-color: #6366f1;
+      --primary-dark: #4f46e5;
+      --primary-light: #818cf8;
+      --secondary-color: #10b981;
+      --gray-color: #9ca3af;
+      --light-gray: #1f2937;
+      --dark-gray: #d1d5db;
+      --black: #f9fafb;
+      --white: #111827;
+      --bg-color: #111827;
+      --card-bg: #1f2937;
+      --text-color: #f3f4f6;
+      --border-color: #374151;
+      
+      /* Status colors remain mostly the same for visibility */
+      --success-color: #34d399;
+      --warning-color: #fbbf24;
+      --danger-color: #f87171;
+    }
     
     * {
       margin: 0;
@@ -43,7 +77,7 @@
     body {
       font-family: var(--font-sans);
       color: var(--dark-gray);
-      background-color: #f9fafb;
+      background-color: var(--bg-color);
       font-size: 14px;
       line-height: 1.5;
     }
@@ -58,7 +92,7 @@
       background-color: var(--white);
       width: 240px;
       flex-shrink: 0;
-      border-right: 1px solid #e5e7eb;
+      border-right: 1px solid var(--border-color);
       position: fixed;
       height: 100vh;
       overflow-y: auto;
@@ -74,7 +108,7 @@
       padding: 1.5rem;
       display: flex;
       align-items: center;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid var(--border-color);
     }
 
     .logo-text {
@@ -136,7 +170,7 @@
 
     /* Cards */
     .card {
-      background-color: var(--white);
+      background-color: var(--card-bg);
       border-radius: 0.5rem;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
       margin-bottom: 1.5rem;
@@ -144,7 +178,7 @@
 
     .card-header {
       padding: 1rem 1.5rem;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid var(--border-color);
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -171,7 +205,7 @@
     .table td {
       padding: 0.75rem 1rem;
       text-align: left;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid var(--border-color);
     }
 
     .table th {
@@ -263,7 +297,7 @@
     }
 
     .stat-card {
-      background-color: var(--white);
+      background-color: var(--card-bg);
       border-radius: 0.5rem;
       padding: 1.5rem;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
@@ -285,14 +319,14 @@
 
     /* Profiles */
     .profile-list {
-      background-color: var(--white);
+      background-color: var(--card-bg);
       border-radius: 0.5rem;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
     }
 
     .profile-item {
       padding: 1rem;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid var(--border-color);
       transition: background-color 0.2s ease-in-out;
     }
 
@@ -480,7 +514,7 @@
     }
 
     .query-item {
-      background-color: var(--white);
+      background-color: var(--card-bg);
       border-radius: 0.5rem;
       padding: 1rem;
       margin-bottom: 1rem;
@@ -564,7 +598,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid var(--border-color);
     }
 
     .modal-body {
@@ -578,60 +612,266 @@
       font-size: 1.5rem;
     }
 
-    /* Responsive */
-    @media (max-width: 768px) {
-      .sidebar {
-        width: 64px;
-      }
-      
-      .content-wrapper {
-        margin-left: 64px;
-      }
-      
-      .logo-text {
-        display: none;
-      }
-      
-      .nav-link span {
-        display: none;
-      }
-      
-      .nav-section-title {
-        display: none;
-      }
-      
-      .nav-link {
-        justify-content: center;
-        padding: 0.75rem;
-      }
-      
-      .nav-link i {
-        margin-right: 0;
-      }
-      
-      .stats-cards {
-        grid-template-columns: 1fr;
-      }
-      
-      .timeline-breakdown {
-        grid-template-columns: 80px 1fr 50px;
-      }
+    /* Code Profiling Enhancements */
+    .flame-graph-container {
+      height: 400px;
+      overflow-x: auto;
+      position: relative;
+      margin-bottom: 1.5rem;
+      border: 1px solid var(--border-color);
+      border-radius: 0.375rem;
     }
     
-    /* Utility classes */
-    .mt-1 { margin-top: 0.25rem; }
-    .mt-2 { margin-top: 0.5rem; }
-    .mt-3 { margin-top: 0.75rem; }
-    .mt-4 { margin-top: 1rem; }
-    .mb-1 { margin-bottom: 0.25rem; }
-    .mb-2 { margin-bottom: 0.5rem; }
-    .mb-3 { margin-bottom: 0.75rem; }
-    .mb-4 { margin-bottom: 1rem; }
+    .code-profile-block {
+      background-color: var(--card-bg);
+      border-radius: 0.375rem;
+      padding: 0.75rem;
+      margin-bottom: 0.75rem;
+      border-left: 3px solid var(--primary-color);
+    }
+    
+    .code-profile-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+    
+    .code-profile-name {
+      font-weight: 600;
+      font-size: 0.875rem;
+    }
+    
+    .code-profile-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 0.5rem;
+    }
+    
+    .code-profile-stat {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.75rem;
+      color: var(--gray-color);
+    }
+    
+    .code-profile-duration {
+      font-weight: 600;
+      color: var(--text-color);
+    }
+    
+    .method-type-label {
+      display: inline-block;
+      padding: 0.125rem 0.375rem;
+      border-radius: 1rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    
+    .method-type-model { 
+      background-color: rgba(14, 165, 233, 0.2);
+      color: var(--db-color);
+    }
+    
+    .method-type-controller {
+      background-color: rgba(245, 158, 11, 0.2);
+      color: var(--controller-color);
+    }
+    
+    .method-type-view {
+      background-color: rgba(236, 72, 153, 0.2);
+      color: var(--view-color);
+    }
+    
+    .method-type-ruby {
+      background-color: rgba(139, 92, 246, 0.2);
+      color: var(--ruby-color);
+    }
+    
+    /* Call Graph */
+    .call-graph-container {
+      height: 500px;
+      border: 1px solid var(--border-color);
+      border-radius: 0.375rem;
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+    }
+    
+    .call-graph-node {
+      fill: var(--card-bg);
+      stroke: var(--border-color);
+      stroke-width: 1px;
+    }
+    
+    .call-graph-link {
+      stroke: var(--gray-color);
+      stroke-opacity: 0.4;
+    }
+    
+    .call-graph-text {
+      fill: var(--text-color);
+      font-size: 10px;
+    }
+    
+    /* Theme toggle button */
+    .theme-toggle {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background-color: var(--primary-color);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+      z-index: 1000;
+      transition: all 0.2s ease;
+    }
+    
+    .theme-toggle:hover {
+      transform: scale(1.1);
+    }
+    
+    /* Export options */
+    .export-dropdown {
+      position: relative;
+      display: inline-block;
+    }
+    
+    .export-menu {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: 100%;
+      background-color: var(--card-bg);
+      min-width: 160px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      border-radius: 4px;
+      z-index: 10;
+      overflow: hidden;
+    }
+    
+    .export-menu a {
+      display: block;
+      padding: 8px 16px;
+      text-decoration: none;
+      color: var(--text-color);
+    }
+    
+    .export-menu a:hover {
+      background-color: var(--light-gray);
+    }
+    
+    .export-dropdown:hover .export-menu {
+      display: block;
+    }
+    
+    /* Real-time updates toggle */
+    .real-time-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-left: 1rem;
+    }
+    
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 48px;
+      height: 24px;
+    }
+    
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 24px;
+    }
+    
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    
+    input:checked + .toggle-slider {
+      background-color: var(--primary-color);
+    }
+    
+    input:focus + .toggle-slider {
+      box-shadow: 0 0 1px var(--primary-color);
+    }
+    
+    input:checked + .toggle-slider:before {
+      transform: translateX(24px);
+    }
+    
+    /* Search and filter */
+    .search-container {
+      margin-bottom: 1rem;
+    }
+    
+    .search-input {
+      width: 100%;
+      padding: 0.5rem 1rem;
+      border-radius: 0.375rem;
+      border: 1px solid var(--border-color);
+      background-color: var(--card-bg);
+      color: var(--text-color);
+    }
+    
+    .filter-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    
+    .filter-tag {
+      background-color: var(--light-gray);
+      border-radius: 1rem;
+      padding: 0.25rem 0.75rem;
+      font-size: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      color: var(--text-color);
+    }
+    
+    .filter-tag button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 0.875rem;
+      color: var(--gray-color);
+    }
   </style>
   <%= yield :head %>
 </head>
 <body>
-  <div class="app-container">
+  <div class="app-container" data-theme="<%= cookies[:theme] || 'light' %>">
     <div class="sidebar">
       <div class="logo">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="logo-icon" style="color: var(--primary-color);">
@@ -673,12 +913,28 @@
         </div>
         
         <div class="nav-section">
+          <div class="nav-section-title">Code Analysis</div>
+          <a href="<%= rails_profiler.hotspots_path %>" class="nav-link <%= request.path == rails_profiler.hotspots_path ? 'active' : '' %>">
+            <i class="fas fa-fire"></i>
+            <span>Hotspots</span>
+          </a>
+          <a href="<%= rails_profiler.flame_graph_path %>" class="nav-link <%= request.path == rails_profiler.flame_graph_path ? 'active' : '' %>">
+            <i class="fas fa-fire-alt"></i>
+            <span>Flame Graph</span>
+          </a>
+          <a href="<%= rails_profiler.call_graph_path %>" class="nav-link <%= request.path == rails_profiler.call_graph_path ? 'active' : '' %>">
+            <i class="fas fa-project-diagram"></i>
+            <span>Call Graph</span>
+          </a>
+        </div>
+        
+        <div class="nav-section">
           <div class="nav-section-title">Settings</div>
-          <a href="#" class="nav-link">
+          <a href="#" class="nav-link" id="config-link">
             <i class="fas fa-cog"></i>
             <span>Configuration</span>
           </a>
-          <a href="#" class="nav-link">
+          <a href="#" class="nav-link" id="help-link">
             <i class="fas fa-question-circle"></i>
             <span>Help</span>
           </a>
@@ -688,6 +944,110 @@
     
     <div class="content-wrapper">
       <%= yield %>
+    </div>
+    
+    <!-- Theme toggle button -->
+    <div class="theme-toggle" id="theme-toggle">
+      <i class="fas fa-moon"></i>
+    </div>
+  </div>
+
+  <!-- Configuration Modal -->
+  <div id="configModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Rails Profiler Configuration</h2>
+        <span class="close">&times;</span>
+      </div>
+      <div class="modal-body">
+        <form id="configForm">
+          <div class="form-group mb-3">
+            <label for="storage-backend">Storage Backend</label>
+            <select id="storage-backend" class="form-control">
+              <option value="redis">Redis</option>
+              <option value="database">Database</option>
+            </select>
+          </div>
+          
+          <div class="form-group mb-3">
+            <label for="redis-url">Redis URL</label>
+            <input type="text" id="redis-url" class="form-control" placeholder="redis://localhost:6379/0">
+          </div>
+          
+          <div class="form-group mb-3">
+            <label for="sample-rate">Sample Rate</label>
+            <input type="range" id="sample-rate" min="0.01" max="1" step="0.01" value="0.1" class="form-control">
+            <span id="sample-rate-value">10%</span>
+          </div>
+          
+          <div class="form-group mb-3">
+            <label for="retention-days">Data Retention (days)</label>
+            <input type="number" id="retention-days" min="1" max="90" value="7" class="form-control">
+          </div>
+          
+          <div class="form-group mb-3">
+            <div class="checkbox-group">
+              <input type="checkbox" id="track-queries" checked>
+              <label for="track-queries">Track SQL Queries</label>
+            </div>
+          </div>
+          
+          <div class="form-group mb-3">
+            <div class="checkbox-group">
+              <input type="checkbox" id="track-code" checked>
+              <label for="track-code">Track Code Execution</label>
+            </div>
+          </div>
+          
+          <div class="form-group mb-3">
+            <div class="checkbox-group">
+              <input type="checkbox" id="profile-controllers" checked>
+              <label for="profile-controllers">Profile Controllers</label>
+            </div>
+          </div>
+          
+          <div class="form-group mb-3">
+            <div class="checkbox-group">
+              <input type="checkbox" id="profile-models" checked>
+              <label for="profile-models">Profile Models</label>
+            </div>
+          </div>
+        </form>
+        
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-primary" id="save-config">Save changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Help Modal -->
+  <div id="helpModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Rails Profiler Help</h2>
+        <span class="close">&times;</span>
+      </div>
+      <div class="modal-body">
+        <h3>Getting Started</h3>
+        <p>Rails Profiler helps you monitor and optimize the performance of your Ruby on Rails application.</p>
+        
+        <h4>Key Features:</h4>
+        <ul>
+          <li><strong>Request Profiling:</strong> Track the performance of all HTTP requests</li>
+          <li><strong>SQL Query Analysis:</strong> Identify slow database queries</li>
+          <li><strong>Code Profiling:</strong> See which methods are consuming the most time</li>
+          <li><strong>Flame Graphs:</strong> Visualize code execution and find bottlenecks</li>
+          <li><strong>Call Graphs:</strong> Understand method relationships and execution paths</li>
+        </ul>
+        
+        <h4>Configuration:</h4>
+        <p>Access the configuration modal to customize profiling settings for your application.</p>
+        
+        <h4>Documentation:</h4>
+        <p>For more detailed documentation, please visit the <a href="https://github.com/username/rails_profiler" target="_blank">GitHub repository</a>.</p>
+      </div>
     </div>
   </div>
 
@@ -720,7 +1080,92 @@
           event.target.style.display = "none";
         }
       });
+
+      // Theme toggle
+      const themeToggle = document.getElementById('theme-toggle');
+      if (themeToggle) {
+        // Update icon based on current theme
+        const currentTheme = document.querySelector('.app-container').getAttribute('data-theme');
+        themeToggle.innerHTML = currentTheme === 'dark' ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
+        
+        themeToggle.addEventListener('click', function() {
+          const appContainer = document.querySelector('.app-container');
+          const currentTheme = appContainer.getAttribute('data-theme');
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          appContainer.setAttribute('data-theme', newTheme);
+          
+          // Update icon
+          this.innerHTML = newTheme === 'dark' ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
+          
+          // Save the user's preference in a cookie
+          document.cookie = `theme=${newTheme}; path=/; max-age=${60*60*24*365}`;
+          
+          // Refresh charts if they exist
+          if (window.railsProfilerCharts) {
+            Object.values(window.railsProfilerCharts).forEach(chart => {
+              if (chart && typeof chart.update === 'function') {
+                chart.update();
+              }
+            });
+          }
+        });
+      }
+      
+      // Configuration modal
+      const configLink = document.getElementById('config-link');
+      if (configLink) {
+        configLink.addEventListener('click', function(e) {
+          e.preventDefault();
+          document.getElementById('configModal').style.display = 'block';
+        });
+      }
+      
+      // Help modal
+      const helpLink = document.getElementById('help-link');
+      if (helpLink) {
+        helpLink.addEventListener('click', function(e) {
+          e.preventDefault();
+          document.getElementById('helpModal').style.display = 'block';
+        });
+      }
+      
+      // Sample rate slider
+      const sampleRateSlider = document.getElementById('sample-rate');
+      const sampleRateValue = document.getElementById('sample-rate-value');
+      if (sampleRateSlider && sampleRateValue) {
+        sampleRateSlider.addEventListener('input', function() {
+          sampleRateValue.textContent = `${(this.value * 100).toFixed(0)}%`;
+        });
+      }
+      
+      // Initialize charts container for theme changes
+      window.railsProfilerCharts = {};
     });
+    
+    // Helper function to format numbers with commas
+    function numberWithCommas(x) {
+      return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+    
+    // Helper function for exporting data
+    function exportData(data, filename, type = 'json') {
+      let exportContent;
+      let mimeType;
+      
+      if (type === 'json') {
+        exportContent = JSON.stringify(data, null, 2);
+        mimeType = 'application/json';
+      } else if (type === 'csv') {
+        // Convert JSON to CSV
+        const headers = Object.keys(data[0]).join(',');
+        const rows = data.map(row => Object.values(row).join(','));
+        exportContent = [headers, ...rows].join('\n');
+        mimeType = 'text/csv';
+      }
+      
+      const blob = new Blob([exportContent], { type: mimeType });
+      saveAs(blob, `${filename}.${type}`);
+    }
   </script>
   
   <%= yield :scripts %>

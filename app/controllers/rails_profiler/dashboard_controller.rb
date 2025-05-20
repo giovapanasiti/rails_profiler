@@ -8,7 +8,7 @@ module RailsProfiler
 
     def show
       @profile = Storage.get_profile(params[:id])
-      redirect_to rails_profiler.dashboard_index_path unless @profile
+      redirect_to rails_profiler.root_path unless @profile
     end
 
     def profiles
@@ -144,6 +144,46 @@ module RailsProfiler
       @max_method_time = @hotspots[:methods].first[:value] rescue 100
     end
     
+    def flame_graph
+      # Get data for the flame graph visualization
+      @profile_id = params[:profile_id]
+      
+      if @profile_id
+        @profile = Storage.get_profile(@profile_id)
+        @flame_data = prepare_flame_graph_data(@profile) if @profile
+      else
+        # Without a specific profile, use the most recent profile with code profiling data
+        profiles = Storage.get_profiles(limit: 10)
+        @profile = profiles.find { |p| p[:additional_data] && p[:additional_data][:profiles].present? }
+        @flame_data = prepare_flame_graph_data(@profile) if @profile
+      end
+      
+      # Get a list of recent profiles with code profiling data for the dropdown
+      @available_profiles = Storage.get_profiles(limit: 50).select do |p| 
+        p[:additional_data] && p[:additional_data][:profiles].present?
+      end
+    end
+    
+    def call_graph
+      # Get data for the call graph visualization
+      @profile_id = params[:profile_id]
+      
+      if @profile_id
+        @profile = Storage.get_profile(@profile_id)
+        @call_graph_data = prepare_call_graph_data(@profile) if @profile
+      else
+        # Without a specific profile, use the most recent profile with code profiling data
+        profiles = Storage.get_profiles(limit: 10)
+        @profile = profiles.find { |p| p[:additional_data] && p[:additional_data][:call_graph].present? }
+        @call_graph_data = prepare_call_graph_data(@profile) if @profile
+      end
+      
+      # Get a list of recent profiles with code profiling data for the dropdown
+      @available_profiles = Storage.get_profiles(limit: 50).select do |p| 
+        p[:additional_data] && p[:additional_data][:call_graph].present?
+      end
+    end
+    
     private
     
     def format_hotspot_data(data_hash, value_key, limit)
@@ -154,6 +194,66 @@ module RailsProfiler
           data: data
         }
       end.sort_by { |item| -item[:value] }.take(limit)
+    end
+    
+    def prepare_flame_graph_data(profile)
+      return nil unless profile && profile[:additional_data] && profile[:additional_data][:profiles].present?
+      
+      # Convert the code profiles into a format suitable for flame graph visualization
+      code_profiles = profile[:additional_data][:profiles]
+      
+      # Group by method_name and calculate total time
+      flame_data = []
+      code_profiles.each do |method_name, data|
+        # Skip methods with very small durations to avoid clutter
+        next if data[:total_duration] < 1.0
+        
+        # Create flame graph entry
+        flame_data << {
+          name: method_name,
+          value: data[:total_duration].round(2),
+          method_type: data[:method_type] || 'ruby',
+          count: data[:count]
+        }
+      end
+      
+      # Sort by duration in descending order
+      flame_data.sort_by { |item| -item[:value] }
+    end
+    
+    def prepare_call_graph_data(profile)
+      return nil unless profile && profile[:additional_data] && profile[:additional_data][:call_graph].present?
+      
+      # Convert the call graph into a format suitable for D3 visualization
+      call_graph = profile[:additional_data][:call_graph]
+      
+      # Format for D3 force-directed graph
+      nodes = []
+      links = []
+      node_map = {}
+      
+      # Process nodes first
+      call_graph.each do |caller, callees|
+        unless node_map[caller]
+          node_map[caller] = nodes.length
+          nodes << { id: caller, name: caller.split('#').last || caller }
+        end
+        
+        callees.each do |callee, count|
+          unless node_map[callee]
+            node_map[callee] = nodes.length
+            nodes << { id: callee, name: callee.split('#').last || callee }
+          end
+          
+          links << { 
+            source: node_map[caller], 
+            target: node_map[callee], 
+            value: count 
+          }
+        end
+      end
+      
+      { nodes: nodes, links: links }
     end
   end
 end

@@ -1,0 +1,219 @@
+<div class="page-header">
+  <h1 class="page-title">Call Graph</h1>
+  <div class="page-actions">
+    <div class="dropdown">
+      <button class="btn btn-secondary dropdown-toggle">
+        <%= @profile ? "#{@profile[:controller]}##{@profile[:action]}" : "Select Profile" %>
+        <i class="fas fa-chevron-down ml-1"></i>
+      </button>
+      <div class="dropdown-menu">
+        <% if @available_profiles.present? %>
+          <% @available_profiles.each do |profile| %>
+            <a href="<%= call_graph_path(profile_id: profile[:request_id]) %>" class="dropdown-item">
+              <%= profile[:controller] %>#<%= profile[:action] %> (<%= profile[:request_id][0..7] %>)
+            </a>
+          <% end %>
+        <% else %>
+          <span class="dropdown-item disabled">No profiles available</span>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<% if @call_graph_data.blank? %>
+  <div class="alert alert-info">
+    <i class="fas fa-info-circle mr-2"></i>
+    No call graph data is available. Make sure you have enabled code profiling with <code>config.track_code = true</code>.
+  </div>
+<% else %>
+  <div class="card mb-4">
+    <div class="card-header">
+      <div class="card-title">
+        Method Call Graph for <%= @profile[:controller] %>#<%= @profile[:action] %>
+      </div>
+      <div class="card-description">
+        <span class="text-muted">
+          Request ID: <%= @profile[:request_id] %>, Duration: <%= @profile[:duration].round(2) %> ms
+        </span>
+      </div>
+    </div>
+    <div class="card-body">
+      <p class="text-muted mb-3">
+        This visualization shows how methods call each other during request execution. 
+        Larger nodes represent methods that are called more frequently.
+        <strong>Drag nodes</strong> to explore the graph, <strong>hover over nodes</strong> for details.
+      </p>
+      
+      <div class="call-graph-container" id="call-graph"></div>
+      
+      <div class="controls mt-3">
+        <button id="zoom-in" class="btn btn-sm btn-outline-secondary">
+          <i class="fas fa-search-plus"></i> Zoom In
+        </button>
+        <button id="zoom-out" class="btn btn-sm btn-outline-secondary">
+          <i class="fas fa-search-minus"></i> Zoom Out
+        </button>
+        <button id="reset-zoom" class="btn btn-sm btn-outline-secondary">
+          <i class="fas fa-sync"></i> Reset
+        </button>
+      </div>
+    </div>
+  </div>
+<% end %>
+
+<% content_for :scripts do %>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Call graph visualization using D3 force-directed graph
+    const graphContainer = document.getElementById('call-graph');
+    
+    if (graphContainer && <%= @call_graph_data.present? ? 'true' : 'false' %>) {
+      const graphData = <%= raw @call_graph_data.to_json %>;
+      
+      // Initialize zoom
+      let currentZoom = 1;
+      
+      // Create SVG container
+      const width = graphContainer.clientWidth;
+      const height = 500;
+      
+      const svg = d3.select('#call-graph')
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height)
+        .attr('viewBox', [0, 0, width, height])
+        .call(d3.zoom().on('zoom', event => {
+          g.attr('transform', event.transform);
+          currentZoom = event.transform.k;
+        }));
+        
+      const g = svg.append('g');
+      
+      // Create a force simulation
+      const simulation = d3.forceSimulation(graphData.nodes)
+        .force('link', d3.forceLink(graphData.links).id(d => d.id).distance(100))
+        .force('charge', d3.forceManyBody().strength(-300))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collision', d3.forceCollide().radius(d => nodeSize(d) + 5));
+        
+      // Define node size based on value
+      function nodeSize(d) {
+        const size = d3.sum(graphData.links.filter(l => l.source.id === d.id), l => l.value);
+        return Math.max(Math.sqrt(size) * 3, 8);
+      }
+      
+      // Create links
+      const link = g.append('g')
+        .attr('stroke', '#999')
+        .attr('stroke-opacity', 0.6)
+        .selectAll('line')
+        .data(graphData.links)
+        .join('line')
+        .attr('class', 'call-graph-link')
+        .attr('stroke-width', d => Math.sqrt(d.value));
+        
+      // Create nodes
+      const node = g.append('g')
+        .selectAll('circle')
+        .data(graphData.nodes)
+        .join('circle')
+        .attr('class', 'call-graph-node')
+        .attr('r', nodeSize)
+        .attr('fill', getNodeColor)
+        .call(drag(simulation));
+        
+      // Node labels
+      const label = g.append('g')
+        .attr('class', 'labels')
+        .selectAll('text')
+        .data(graphData.nodes)
+        .join('text')
+        .attr('class', 'call-graph-text')
+        .text(d => d.name)
+        .attr('font-size', 10)
+        .attr('text-anchor', 'middle')
+        .attr('dy', 3);
+        
+      // Add tooltips
+      node.append('title')
+        .text(d => `${d.id}\nCalls: ${d3.sum(graphData.links.filter(l => l.source.id === d.id), l => l.value)}`);
+        
+      // Update positions on each tick
+      simulation.on('tick', () => {
+        link
+          .attr('x1', d => d.source.x)
+          .attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x)
+          .attr('y2', d => d.target.y);
+          
+        node
+          .attr('cx', d => d.x = Math.max(nodeSize(d), Math.min(width - nodeSize(d), d.x)))
+          .attr('cy', d => d.y = Math.max(nodeSize(d), Math.min(height - nodeSize(d), d.y)));
+          
+        label
+          .attr('x', d => d.x)
+          .attr('y', d => d.y - nodeSize(d) - 5);
+      });
+      
+      // Node color function
+      function getNodeColor(d) {
+        if (d.id.includes('Controller')) return '#f59e0b';  // Controller
+        if (d.id.includes('Model') || d.id.includes('find_by_sql')) return '#0ea5e9';  // Model
+        if (d.id.includes('Render:')) return '#ec4899';  // View
+        return '#8b5cf6';  // Ruby
+      }
+      
+      // Drag functionality
+      function drag(simulation) {
+        function dragstarted(event) {
+          if (!event.active) simulation.alphaTarget(0.3).restart();
+          event.subject.fx = event.subject.x;
+          event.subject.fy = event.subject.y;
+        }
+        
+        function dragged(event) {
+          event.subject.fx = event.x;
+          event.subject.fy = event.y;
+        }
+        
+        function dragended(event) {
+          if (!event.active) simulation.alphaTarget(0);
+          event.subject.fx = null;
+          event.subject.fy = null;
+        }
+        
+        return d3.drag()
+          .on('start', dragstarted)
+          .on('drag', dragged)
+          .on('end', dragended);
+      }
+      
+      // Zoom controls
+      document.getElementById('zoom-in').addEventListener('click', () => {
+        currentZoom *= 1.2;
+        svg.transition().duration(300).call(
+          d3.zoom().transform,
+          d3.zoomIdentity.scale(currentZoom)
+        );
+      });
+      
+      document.getElementById('zoom-out').addEventListener('click', () => {
+        currentZoom *= 0.8;
+        svg.transition().duration(300).call(
+          d3.zoom().transform,
+          d3.zoomIdentity.scale(currentZoom)
+        );
+      });
+      
+      document.getElementById('reset-zoom').addEventListener('click', () => {
+        currentZoom = 1;
+        svg.transition().duration(300).call(
+          d3.zoom().transform,
+          d3.zoomIdentity
+        );
+      });
+    }
+  });
+</script>
+<% end %>

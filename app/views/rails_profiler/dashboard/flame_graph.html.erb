@@ -1,0 +1,223 @@
+<div class="page-header">
+  <h1 class="page-title">Flame Graph</h1>
+  <div class="page-actions">
+    <div class="dropdown">
+      <button class="btn btn-secondary dropdown-toggle">
+        <%= @profile ? "#{@profile[:controller]}##{@profile[:action]}" : "Select Profile" %>
+        <i class="fas fa-chevron-down ml-1"></i>
+      </button>
+      <div class="dropdown-menu">
+        <% if @available_profiles.present? %>
+          <% @available_profiles.each do |profile| %>
+            <a href="<%= flame_graph_path(profile_id: profile[:request_id]) %>" class="dropdown-item">
+              <%= profile[:controller] %>#<%= profile[:action] %> (<%= profile[:request_id][0..7] %>)
+            </a>
+          <% end %>
+        <% else %>
+          <span class="dropdown-item disabled">No profiles available</span>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<% if @flame_data.blank? %>
+  <div class="alert alert-info">
+    <i class="fas fa-info-circle mr-2"></i>
+    No code profiling data is available. Make sure you have enabled code profiling with <code>config.track_code = true</code>.
+  </div>
+<% else %>
+  <div class="card mb-4">
+    <div class="card-header">
+      <div class="card-title">
+        Flame Graph for <%= @profile[:controller] %>#<%= @profile[:action] %>
+      </div>
+      <div class="card-description">
+        <span class="text-muted">
+          Request ID: <%= @profile[:request_id] %>, Duration: <%= @profile[:duration].round(2) %> ms
+        </span>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="flame-graph-container" id="flame-graph"></div>
+      <div class="legend mt-2">
+        <span class="badge bg-controller mr-2">Controller</span>
+        <span class="badge bg-model mr-2">Model</span>
+        <span class="badge bg-view mr-2">View</span>
+        <span class="badge bg-ruby mr-2">Ruby</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Method Execution Times</div>
+      <div class="card-actions">
+        <div class="search-container">
+          <input type="text" id="method-search" class="form-control form-control-sm" placeholder="Search methods...">
+        </div>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover table-striped method-table">
+          <thead>
+            <tr>
+              <th>Method</th>
+              <th>Type</th>
+              <th>Calls</th>
+              <th>Total Time (ms)</th>
+              <th>Avg Time (ms)</th>
+              <th>% of Request</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @flame_data.each do |method_data| %>
+              <tr class="method-row" data-method-name="<%= method_data[:name] %>">
+                <td class="method-name" title="<%= method_data[:name] %>">
+                  <%= method_data[:name].truncate(50) %>
+                </td>
+                <td>
+                  <span class="method-type-label method-type-<%= method_data[:method_type] %>">
+                    <%= method_data[:method_type] %>
+                  </span>
+                </td>
+                <td><%= method_data[:count] %></td>
+                <td><%= method_data[:value].round(2) %> ms</td>
+                <td><%= (method_data[:value] / method_data[:count]).round(2) %> ms</td>
+                <td>
+                  <div class="progress">
+                    <div class="progress-bar bg-<%= method_data[:method_type] == 'controller' ? 'warning' : (method_data[:method_type] == 'model' ? 'info' : (method_data[:method_type] == 'view' ? 'danger' : 'primary')) %>"
+                         style="width: <%= [(method_data[:value] / @profile[:duration] * 100), 100].min %>%">
+                      <%= ((method_data[:value] / @profile[:duration]) * 100).round(1) %>%
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+<% end %>
+
+<% content_for :scripts do %>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Method search functionality
+    const methodSearch = document.getElementById('method-search');
+    if (methodSearch) {
+      methodSearch.addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase();
+        const methodRows = document.querySelectorAll('tr.method-row');
+        
+        methodRows.forEach(function(row) {
+          const methodName = row.getAttribute('data-method-name').toLowerCase();
+          if (methodName.includes(searchTerm)) {
+            row.style.display = '';
+          } else {
+            row.style.display = 'none';
+          }
+        });
+      });
+    }
+    
+    // Flame graph visualization
+    const flameGraphContainer = document.getElementById('flame-graph');
+    if (flameGraphContainer && <%= @flame_data.present? ? 'true' : 'false' %>) {
+      const flameData = <%= raw @flame_data.to_json %>;
+      
+      // Create a D3 flame graph
+      const margin = {top: 10, right: 10, bottom: 10, left: 10};
+      const width = flameGraphContainer.clientWidth - margin.left - margin.right;
+      const height = 350 - margin.top - margin.bottom;
+      
+      // Create SVG
+      const svg = d3.select('#flame-graph')
+        .append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom)
+        .append('g')
+        .attr('transform', `translate(${margin.left}, ${margin.top})`);
+        
+      // Set up scales
+      const x = d3.scaleBand()
+        .domain(flameData.map(d => d.name))
+        .range([0, width])
+        .padding(0.1);
+        
+      const y = d3.scaleLinear()
+        .domain([0, d3.max(flameData, d => d.value)])
+        .nice()
+        .range([height, 0]);
+        
+      // Color scale based on method type
+      const color = d => {
+        switch(d.method_type) {
+          case 'controller': return '#f59e0b';
+          case 'model': return '#0ea5e9';
+          case 'view': return '#ec4899';
+          default: return '#8b5cf6';
+        }
+      };
+      
+      // Create bars
+      svg.selectAll('.bar')
+        .data(flameData)
+        .enter()
+        .append('rect')
+        .attr('class', 'bar')
+        .attr('x', d => x(d.name))
+        .attr('y', d => y(d.value))
+        .attr('width', x.bandwidth())
+        .attr('height', d => height - y(d.value))
+        .attr('fill', d => color(d))
+        .attr('opacity', 0.8)
+        .on('mouseover', function(event, d) {
+          d3.select(this).attr('opacity', 1);
+          
+          // Create tooltip
+          const tooltip = d3.select('body')
+            .append('div')
+            .attr('class', 'tooltip')
+            .style('position', 'absolute')
+            .style('background', 'rgba(0, 0, 0, 0.8)')
+            .style('color', 'white')
+            .style('padding', '8px')
+            .style('border-radius', '4px')
+            .style('pointer-events', 'none')
+            .style('z-index', 100);
+            
+          tooltip.html(`
+            <div><strong>${d.name}</strong></div>
+            <div>Type: ${d.method_type}</div>
+            <div>Duration: ${d.value.toFixed(2)} ms</div>
+            <div>Calls: ${d.count}</div>
+          `);
+          
+          // Position tooltip
+          tooltip.style('left', (event.pageX + 10) + 'px')
+                 .style('top', (event.pageY - 28) + 'px');
+        })
+        .on('mouseout', function() {
+          d3.select(this).attr('opacity', 0.8);
+          d3.selectAll('.tooltip').remove();
+        });
+        
+      // Add x-axis
+      svg.append('g')
+        .attr('transform', `translate(0, ${height})`)
+        .call(d3.axisBottom(x))
+        .selectAll('text')
+        .attr('transform', 'translate(-10,0)rotate(-45)')
+        .style('text-anchor', 'end')
+        .style('font-size', '8px');
+        
+      // Add y-axis
+      svg.append('g')
+        .call(d3.axisLeft(y).ticks(5).tickFormat(d => d + ' ms'));
+    }
+  });
+</script>
+<% end %>
