@@ -58,6 +58,15 @@ module RailsProfiler
         DatabaseStorage.get_profiles_by_endpoint(endpoint_name, limit: limit)
       end
     end
+    
+    def self.get_trends(days: 7)
+      case RailsProfiler.config.storage_backend
+      when :redis
+        RedisStorage.get_trends(days: days)
+      when :database
+        DatabaseStorage.get_trends(days: days)
+      end
+    end
   end
 
   class RedisStorage
@@ -332,6 +341,107 @@ module RailsProfiler
         matching_profiles.take(limit)
       rescue => e
         puts "[RailsProfiler] Redis error getting profiles by endpoint: #{e.class.name} - #{e.message}"
+        []
+      end
+    end
+    
+    def self.get_trends(days: 7)
+      # If Redis is not available, return empty array
+      return [] unless redis
+
+      begin
+        # Calculate time range
+        end_time = Time.current
+        start_time = days.days.ago.beginning_of_day
+        
+        # Get all profile IDs within the time range using Redis ZRANGEBYSCORE
+        profile_ids = redis.zrangebyscore(
+          "rails_profiler:profiles", 
+          start_time.to_f, 
+          end_time.to_f
+        )
+        
+        puts "[RailsProfiler] Found #{profile_ids.size} profiles for trends in #{days} day period"
+        
+        # Group profiles by hour
+        hourly_data = {}
+        
+        # Process each profile
+        profile_ids.each do |id|
+          profile_data = get_profile(id)
+          next unless profile_data && profile_data[:status].to_i >= 100
+          
+          # Ensure timestamp is a numeric value and convert to Time object
+          timestamp = profile_data[:started_at]
+          time_obj = case timestamp
+                     when String
+                       # Try to parse as float first, then as Time
+                       begin
+                         # Try to parse as float first, then as Time
+                         begin
+                           float_timestamp = Float(timestamp)
+                           Time.at(float_timestamp)
+                         rescue
+                           # If float conversion fails, try parsing as Time
+                           Time.at(Time.parse(timestamp).to_f)
+                         end
+                       rescue
+                         # If all conversion attempts fail, use current time
+                         Time.now
+                       end
+                     when Integer, Float
+                       Time.at(timestamp)
+                     else
+                       # For any other type (including Time objects), convert to time
+                       Time.at(timestamp.to_f)
+                     end
+          
+          # Get the hour bucket (round down to the hour)
+          hour_key = time_obj.beginning_of_hour.to_i
+          
+          # Initialize the hour bucket if needed
+          hourly_data[hour_key] ||= { 
+            count: 0, 
+            total_duration: 0
+          }
+          
+          # Add profile data to the hour bucket
+          hourly_data[hour_key][:count] += 1
+          hourly_data[hour_key][:total_duration] += profile_data[:duration].to_f
+        end
+        
+        # Fill in missing hours in the time range
+        current_hour = start_time.beginning_of_hour.to_i
+        end_hour = end_time.beginning_of_hour.to_i
+        
+        while current_hour <= end_hour
+          hourly_data[current_hour] ||= { 
+            count: 0, 
+            total_duration: 0
+          }
+          current_hour += 1.hour.to_i
+        end
+        
+        # Convert to array format for the charts
+        result = hourly_data.map do |timestamp, data|
+          avg_duration = data[:count] > 0 ? data[:total_duration] / data[:count] : 0
+          
+          {
+            timestamp: timestamp * 1000, # Convert to milliseconds for JS charts
+            count: data[:count],
+            avg_duration: avg_duration
+          }
+        end
+        
+        # Sort by timestamp
+        sorted_result = result.sort_by { |item| item[:timestamp] }
+        
+        puts "[RailsProfiler] Generated #{sorted_result.size} hourly data points for trends"
+        
+        sorted_result
+      rescue => e
+        puts "[RailsProfiler] Redis error getting trends: #{e.class.name} - #{e.message}"
+        puts e.backtrace.join("\n")
         []
       end
     end
