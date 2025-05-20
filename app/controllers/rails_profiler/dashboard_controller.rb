@@ -265,6 +265,27 @@ module RailsProfiler
       end
     end
     
+    def debug_profile
+      profile_id = params[:profile_id]
+      
+      if profile_id
+        @profile = Storage.get_profile(profile_id)
+        render json: {
+          profile_exists: @profile.present?,
+          profile_request_id: @profile&.dig(:request_id),
+          has_additional_data: @profile&.dig(:additional_data).present?,
+          additional_data_keys: @profile&.dig(:additional_data)&.keys,
+          has_profiles_data: @profile&.dig(:additional_data, :profiles).present?,
+          profiles_count: @profile&.dig(:additional_data, :profiles)&.size,
+          has_methods_data: @profile&.dig(:additional_data, :methods).present?,
+          methods_count: @profile&.dig(:additional_data, :methods)&.size,
+          flame_data: prepare_flame_graph_data(@profile)
+        }
+      else
+        render json: { error: "No profile ID provided" }
+      end
+    end
+    
     private
     
     def prepare_time_series_data
@@ -426,60 +447,157 @@ module RailsProfiler
         return nil
       end
       
-      # Check if we have profiles data
-      if !profile[:additional_data][:profiles].present?
-        Rails.logger.debug "[RailsProfiler] No profiles data in additional_data"
-        # Try fallback to older format if available
-        if profile[:additional_data][:methods].present?
-          Rails.logger.debug "[RailsProfiler] Found alternative method data structure"
-          code_profiles = profile[:additional_data][:methods]
-        else
-          return nil
-        end
-      else
-        code_profiles = profile[:additional_data][:profiles]
-      end
-      
-      Rails.logger.debug "[RailsProfiler] Found #{code_profiles.size} methods to visualize"
-      
-      # Group by method_name and calculate total time
+      # Initialize empty flame data array
       flame_data = []
       
-      code_profiles.each do |method_name, data|
-        begin
-          # Handle two possible data structures
-          if data.is_a?(Hash)
-            # Skip methods with very small durations to avoid clutter
-            total_duration = data[:total_duration] || data[:value] || 0
-            next if total_duration < 0.5
+      # Try multiple sources for method data in order of preference
+      if profile[:additional_data][:profiles].present?
+        Rails.logger.debug "[RailsProfiler] Using :profiles data source"
+        code_profiles = profile[:additional_data][:profiles]
+        
+        code_profiles.each do |method_name, data|
+          begin
+            # Handle hash data structure
+            if data.is_a?(Hash)
+              # Skip methods with very small durations to avoid clutter
+              total_duration = data[:total_duration] || data[:value] || 0
+              next if total_duration < 0.5
+              
+              # Create flame graph entry
+              flame_data << {
+                name: method_name.to_s,
+                value: total_duration.round(2),
+                method_type: data[:method_type] || categorize_method(method_name.to_s),
+                count: data[:count] || 1
+              }
+            elsif data.is_a?(Numeric)
+              # Simple numeric duration value
+              next if data < 0.5
+              
+              flame_data << {
+                name: method_name.to_s,
+                value: data.round(2),
+                method_type: categorize_method(method_name.to_s),
+                count: 1
+              }
+            end
+          rescue => e
+            Rails.logger.error "[RailsProfiler] Error processing method #{method_name}: #{e.message}"
+          end
+        end
+      elsif profile[:additional_data][:methods].present?
+        Rails.logger.debug "[RailsProfiler] Using :methods data source"
+        methods_data = profile[:additional_data][:methods]
+        
+        methods_data.each do |method_name, data|
+          begin
+            value = data.is_a?(Hash) ? (data[:value] || data[:duration] || 0) : data.to_f
+            next if value < 0.5
             
-            # Create flame graph entry
             flame_data << {
               name: method_name.to_s,
-              value: total_duration.round(2),
-              method_type: data[:method_type] || categorize_method(method_name.to_s),
-              count: data[:count] || 1
+              value: value.round(2),
+              method_type: data.is_a?(Hash) ? (data[:method_type] || categorize_method(method_name.to_s)) : categorize_method(method_name.to_s),
+              count: data.is_a?(Hash) ? (data[:count] || 1) : 1
             }
-          elsif data.is_a?(Numeric)
-            # Simple numeric duration value
-            next if data < 0.5
-            
+          rescue => e
+            Rails.logger.error "[RailsProfiler] Error processing method from :methods: #{e.message}"
+          end
+        end
+      elsif profile[:additional_data][:hotspots].present?
+        Rails.logger.debug "[RailsProfiler] Using :hotspots data source"
+        
+        # Try to extract method data from the hotspots structure
+        hotspots = profile[:additional_data][:hotspots]
+        
+        # Process controller hotspots
+        if hotspots[:controllers].is_a?(Array)
+          hotspots[:controllers].each do |controller|
+            next unless controller.is_a?(Hash) && controller[:name].present?
             flame_data << {
-              name: method_name.to_s,
-              value: data.round(2),
-              method_type: categorize_method(method_name.to_s),
+              name: controller[:name].to_s,
+              value: controller[:value] || 0,
+              method_type: 'controller',
               count: 1
             }
           end
-        rescue => e
-          Rails.logger.error "[RailsProfiler] Error processing method #{method_name}: #{e.message}"
         end
+        
+        # Process method hotspots
+        if hotspots[:methods].is_a?(Array)
+          hotspots[:methods].each do |method|
+            next unless method.is_a?(Hash) && method[:name].present?
+            flame_data << {
+              name: method[:name].to_s,
+              value: method[:value] || 0,
+              method_type: 'ruby',
+              count: method[:data].is_a?(Hash) ? (method[:data][:count] || 1) : 1
+            }
+          end
+        end
+        
+        # Process model hotspots
+        if hotspots[:models].is_a?(Array)
+          hotspots[:models].each do |model|
+            next unless model.is_a?(Hash) && model[:name].present?
+            flame_data << {
+              name: model[:name].to_s,
+              value: model[:value] || 0,
+              method_type: 'model',
+              count: model[:data].is_a?(Hash) ? (model[:data][:count] || 1) : 1
+            }
+          end
+        end
+        
+        # Process view hotspots
+        if hotspots[:views].is_a?(Array)
+          hotspots[:views].each do |view|
+            next unless view.is_a?(Hash) && view[:name].present?
+            flame_data << {
+              name: view[:name].to_s,
+              value: view[:value] || 0,
+              method_type: 'view',
+              count: view[:data].is_a?(Hash) ? (view[:data][:count] || 1) : 1
+            }
+          end
+        end
+      elsif profile[:additional_data][:events].present?
+        Rails.logger.debug "[RailsProfiler] Using :events data source"
+        
+        # Try to extract method data from the events
+        events = profile[:additional_data][:events]
+        event_durations = {}
+        
+        # Group and aggregate events by name
+        events.each do |event|
+          next unless event.is_a?(Hash)
+          
+          name = event[:name] || event[:event]
+          next unless name.present?
+          
+          duration = event[:duration].to_f
+          event_durations[name] ||= { value: 0, count: 0 }
+          event_durations[name][:value] += duration
+          event_durations[name][:count] += 1
+        end
+        
+        # Convert to flame data format
+        event_durations.each do |name, data|
+          flame_data << {
+            name: name.to_s,
+            value: data[:value].round(2),
+            method_type: categorize_event(name.to_s),
+            count: data[:count]
+          }
+        end
+      else
+        Rails.logger.debug "[RailsProfiler] No suitable profiling data found for flame graph"
       end
       
       Rails.logger.debug "[RailsProfiler] Generated #{flame_data.size} flame data entries"
       
-      # Sort by duration in descending order
-      flame_data.sort_by { |item| -item[:value] }
+      # Only return if we have data
+      flame_data.empty? ? nil : flame_data.sort_by { |item| -item[:value] }
     end
     
     # Helper method to categorize methods based on name patterns
@@ -492,6 +610,21 @@ module RailsProfiler
         'model'
       elsif method_name.include?('view') || method_name.include?('template') || method_name.include?('render')
         'view'
+      else
+        'ruby'
+      end
+    end
+    
+    # Helper method to categorize events based on name patterns
+    def categorize_event(event_name)
+      event_name = event_name.to_s.downcase
+      
+      if event_name.include?('sql') || event_name.include?('query') || event_name.include?('db')
+        'model'
+      elsif event_name.include?('view') || event_name.include?('template') || event_name.include?('render')
+        'view'
+      elsif event_name.include?('controller') || event_name.include?('action') || event_name.include?('request')
+        'controller'
       else
         'ruby'
       end

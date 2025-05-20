@@ -10,4 +10,7 @@ RailsProfiler::Engine.routes.draw do
   get 'hotspots', to: 'dashboard#hotspots'
   get 'flame_graph', to: 'dashboard#flame_graph'
   get 'call_graph', to: 'dashboard#call_graph'
+  
+  # Diagnostic route for debugging
+  get '/debug_profile', to: 'dashboard#debug_profile', as: :debug_profile
 end
