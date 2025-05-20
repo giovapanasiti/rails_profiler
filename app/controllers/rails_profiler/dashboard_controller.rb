@@ -72,60 +72,115 @@ module RailsProfiler
         views: {}
       }
       
+      # Debug log the number of profiles we're examining
+      Rails.logger.debug "[RailsProfiler] Analyzing #{@profiles.size} profiles for hotspots"
+      
       # Aggregate hotspot data from all profiles
       @profiles.each do |profile|
-        if profile[:additional_data].is_a?(Hash) && 
-           profile[:additional_data][:hotspots].is_a?(Hash)
+        # Handle basic controller data even without hotspots
+        if profile[:controller].present?
+          controller_name = profile[:controller] 
+          action_name = profile[:action]
           
-          # Merge controller hotspots
-          profile_hotspots = profile[:additional_data][:hotspots]
+          # Create basic controller hotspot entry if there's no detailed data
+          hotspots[:controllers][controller_name] ||= { total_time: 0, count: 0, actions: {} }
+          hotspots[:controllers][controller_name][:total_time] += profile[:duration] || 0
+          hotspots[:controllers][controller_name][:count] += 1
           
-          # Aggregate controller hotspots
-          if profile_hotspots[:controllers].is_a?(Array)
-            profile_hotspots[:controllers].each do |controller|
-              name = controller[:name]
-              hotspots[:controllers][name] ||= { total_time: 0, count: 0, actions: {} }
-              hotspots[:controllers][name][:total_time] += controller[:value]
-              hotspots[:controllers][name][:count] += 1
-              
-              if controller[:data][:actions].is_a?(Hash)
-                controller[:data][:actions].each do |action, action_data|
-                  hotspots[:controllers][name][:actions][action] ||= { total_time: 0, count: 0 }
-                  hotspots[:controllers][name][:actions][action][:total_time] += action_data[:total_time]
-                  hotspots[:controllers][name][:actions][action][:count] += action_data[:count]
+          if action_name.present?
+            hotspots[:controllers][controller_name][:actions][action_name] ||= { total_time: 0, count: 0 }
+            hotspots[:controllers][controller_name][:actions][action_name][:total_time] += profile[:duration] || 0
+            hotspots[:controllers][controller_name][:actions][action_name][:count] += 1
+          end
+        end
+        
+        # Process detailed hotspot data if available
+        if profile[:additional_data].is_a?(Hash)
+          # Try to process hotspots data
+          if profile[:additional_data][:hotspots].is_a?(Hash)
+            profile_hotspots = profile[:additional_data][:hotspots]
+            
+            # Aggregate controller hotspots
+            if profile_hotspots[:controllers].is_a?(Array) && !profile_hotspots[:controllers].empty?
+              profile_hotspots[:controllers].each do |controller|
+                next unless controller.is_a?(Hash) && controller[:name].present?
+                
+                name = controller[:name]
+                hotspots[:controllers][name] ||= { total_time: 0, count: 0, actions: {} }
+                hotspots[:controllers][name][:total_time] += controller[:value] || 0
+                hotspots[:controllers][name][:count] += 1
+                
+                if controller[:data].is_a?(Hash) && controller[:data][:actions].is_a?(Hash)
+                  controller[:data][:actions].each do |action, action_data|
+                    next unless action_data.is_a?(Hash)
+                    
+                    hotspots[:controllers][name][:actions][action] ||= { total_time: 0, count: 0 }
+                    hotspots[:controllers][name][:actions][action][:total_time] += action_data[:total_time] || 0
+                    hotspots[:controllers][name][:actions][action][:count] += action_data[:count] || 1
+                  end
                 end
+              end
+            end
+            
+            # Aggregate method hotspots
+            if profile_hotspots[:methods].is_a?(Array) && !profile_hotspots[:methods].empty?
+              profile_hotspots[:methods].each do |method|
+                next unless method.is_a?(Hash) && method[:name].present?
+                
+                name = method[:name]
+                hotspots[:methods][name] ||= { exclusive_time: 0, total_time: 0, count: 0 }
+                hotspots[:methods][name][:exclusive_time] += method[:value] || 0
+                
+                if method[:data].is_a?(Hash)
+                  hotspots[:methods][name][:total_time] += method[:data][:total_time] || method[:value] || 0
+                  hotspots[:methods][name][:count] += method[:data][:count] || 1
+                else
+                  hotspots[:methods][name][:total_time] += method[:value] || 0
+                  hotspots[:methods][name][:count] += 1
+                end
+              end
+            end
+            
+            # Aggregate model hotspots
+            if profile_hotspots[:models].is_a?(Array) && !profile_hotspots[:models].empty?
+              profile_hotspots[:models].each do |model|
+                next unless model.is_a?(Hash) && model[:name].present?
+                
+                name = model[:name]
+                hotspots[:models][name] ||= { total_time: 0, count: 0 }
+                hotspots[:models][name][:total_time] += model[:value] || 0
+                hotspots[:models][name][:count] += (model[:data].is_a?(Hash) ? model[:data][:count] || 1 : 1)
+              end
+            end
+            
+            # Aggregate view hotspots
+            if profile_hotspots[:views].is_a?(Array) && !profile_hotspots[:views].empty?
+              profile_hotspots[:views].each do |view|
+                next unless view.is_a?(Hash) && view[:name].present?
+                
+                name = view[:name]
+                hotspots[:views][name] ||= { total_time: 0, count: 0 }
+                hotspots[:views][name][:total_time] += view[:value] || 0
+                hotspots[:views][name][:count] += (view[:data].is_a?(Hash) ? view[:data][:count] || 1 : 1)
               end
             end
           end
           
-          # Aggregate method hotspots
-          if profile_hotspots[:methods].is_a?(Array)
-            profile_hotspots[:methods].each do |method|
-              name = method[:name]
-              hotspots[:methods][name] ||= { exclusive_time: 0, total_time: 0, count: 0 }
-              hotspots[:methods][name][:exclusive_time] += method[:value]
-              hotspots[:methods][name][:total_time] += method[:data][:total_time]
-              hotspots[:methods][name][:count] += method[:data][:count]
-            end
-          end
-          
-          # Aggregate model hotspots
-          if profile_hotspots[:models].is_a?(Array)
-            profile_hotspots[:models].each do |model|
-              name = model[:name]
-              hotspots[:models][name] ||= { total_time: 0, count: 0 }
-              hotspots[:models][name][:total_time] += model[:value]
-              hotspots[:models][name][:count] += model[:data][:count]
-            end
-          end
-          
-          # Aggregate view hotspots
-          if profile_hotspots[:views].is_a?(Array)
-            profile_hotspots[:views].each do |view|
-              name = view[:name]
-              hotspots[:views][name] ||= { total_time: 0, count: 0 }
-              hotspots[:views][name][:total_time] += view[:value]
-              hotspots[:views][name][:count] += view[:data][:count]
+          # Try to extract method data from profiles if method hotspots are empty
+          if hotspots[:methods].empty? && profile[:additional_data][:profiles].is_a?(Hash)
+            profile[:additional_data][:profiles].each do |method_name, data|
+              next if method_name.include?('Controller') # Skip controller methods to avoid duplication
+              next unless data.is_a?(Hash)
+              
+              hotspots[:methods][method_name] ||= { 
+                exclusive_time: 0, 
+                total_time: 0, 
+                count: 0 
+              }
+              
+              hotspots[:methods][method_name][:exclusive_time] += data[:exclusive_duration] || 0
+              hotspots[:methods][method_name][:total_time] += data[:total_duration] || 0
+              hotspots[:methods][method_name][:count] += data[:count] || 1
             end
           end
         end
@@ -139,9 +194,13 @@ module RailsProfiler
         views: format_hotspot_data(hotspots[:views], :total_time, 10)
       }
       
-      # Get maximum times for scaling progress bars
-      @max_controller_time = @hotspots[:controllers].first[:value] rescue 100
-      @max_method_time = @hotspots[:methods].first[:value] rescue 100
+      # Log what we found
+      Rails.logger.debug "[RailsProfiler] Found #{@hotspots[:controllers].size} controller hotspots"
+      Rails.logger.debug "[RailsProfiler] Found #{@hotspots[:methods].size} method hotspots"
+      
+      # Get maximum times for scaling progress bars (with fallbacks)
+      @max_controller_time = (@hotspots[:controllers].first&.dig(:value) || 100) rescue 100
+      @max_method_time = (@hotspots[:methods].first&.dig(:value) || 100) rescue 100
     end
     
     def flame_graph

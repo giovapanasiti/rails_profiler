@@ -7,6 +7,7 @@ require "rails_profiler/profiler"
 require "rails_profiler/query_tracker"
 require "rails_profiler/code_profiler"
 require "rails_profiler/storage"
+require "rails_profiler/debug_patch" # Load the debug patch
 
 # Apply the Redis patch immediately before any Redis operations
 RailsProfiler::RedisPatch.apply!
