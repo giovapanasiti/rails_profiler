@@ -1,7 +1,5 @@
 module RailsProfiler
   class DashboardController < ApplicationController
-    helper_method :generate_sample_time_data
-    
     def index
       @stats = Storage.get_summary_stats
       @profiles = @stats[:latest_profiles] || []
@@ -285,7 +283,7 @@ module RailsProfiler
         interval: interval
       )
 
-      
+      puts "Time series data: #{time_series.inspect}"
       
       # Format for charts
       @volume_data = []
@@ -319,12 +317,11 @@ module RailsProfiler
         }
       end
       
-      # If we have no valid data after filtering, generate sample data instead
+      # If we have no valid data after filtering, use empty arrays (no sample data)
       if @volume_data.empty?
-        Rails.logger.warn "[RailsProfiler] No valid time series data found, using sample data"
-        sample_data = generate_sample_time_data(6, 'count')
-        @volume_data = sample_data
-        @response_time_data = generate_sample_time_data(6, 'avg_duration')
+        Rails.logger.warn "[RailsProfiler] No valid time series data found, using empty charts"
+        @volume_data = []
+        @response_time_data = []
       end
     end
     
@@ -460,44 +457,6 @@ module RailsProfiler
       end
       
       { nodes: nodes, links: links }
-    end
-    
-    # Helper to generate sample chart data for development
-    def generate_sample_time_data(points = 6, value_key = 'count')
-      period = params[:period] || 'day'
-      
-      case period
-      when 'hour'
-        interval = 10.minutes
-        start_time = 1.hour.ago
-      when 'week'
-        interval = 1.day
-        start_time = 7.days.ago
-      else # 'day'
-        interval = 4.hours
-        start_time = 1.day.ago
-      end
-      
-      result = []
-      points.times do |i|
-        timestamp = start_time + (i * interval)
-        value = case value_key
-                when 'count'
-                  rand(10..100)
-                when 'avg_duration'
-                  rand(50..500)
-                else
-                  rand(10..100)
-                end
-                
-        result << {
-          timestamp: timestamp,
-          count: value_key == 'count' ? value : rand(10..100),
-          avg_duration: value_key == 'avg_duration' ? value : rand(50..500)
-        }
-      end
-      
-      result
     end
   end
 end

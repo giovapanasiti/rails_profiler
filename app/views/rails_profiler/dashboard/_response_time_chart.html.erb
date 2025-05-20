@@ -18,9 +18,20 @@ document.addEventListener('DOMContentLoaded', function() {
   try {
     console.log("Rails Profiler: Initializing response time chart...");
     
-    // Get response time data from controller
-    const responseTimeData = <%= raw (@response_time_data || generate_sample_time_data(6, 'avg_duration')).to_json %>;
+    // Get response time data from controller - never use sample data
+    const responseTimeData = <%= raw (@response_time_data || []).to_json %>;
     console.log("Rails Profiler: Response time data", responseTimeData);
+    
+    // If no response time data is available, display "No Data Available" message
+    if (!responseTimeData || responseTimeData.length === 0) {
+      const canvas = document.getElementById('responseTimeChart');
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        const container = canvas.parentNode;
+        container.innerHTML = '<div class="d-flex align-items-center justify-content-center h-100 text-muted"><em>No data available</em></div>';
+      }
+      return;
+    }
     
     // Format dates based on selected period
     const currentPeriod = '<%= params[:period] || "day" %>';
@@ -59,15 +70,68 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     };
     
+    // Get the interval duration based on the period
+    const getIntervalDuration = (period) => {
+      switch(period) {
+        case 'hour': return 5 * 60 * 1000; // 5 minutes in ms
+        case 'week': return 24 * 60 * 60 * 1000; // 1 day in ms
+        default: return 60 * 60 * 1000; // 1 hour in ms for 'day' period
+      }
+    };
+    
+    // Generate a complete series of timestamps with the appropriate interval
+    const generateCompleteTimeSeries = (data, period) => {
+      if (!data || data.length === 0) return [];
+      
+      // Sort data by timestamp to find min and max times
+      const sortedByTime = [...data].sort((a, b) => 
+        parseTimestamp(a.timestamp) - parseTimestamp(b.timestamp)
+      );
+      
+      const firstTimestamp = parseTimestamp(sortedByTime[0].timestamp);
+      const lastTimestamp = parseTimestamp(sortedByTime[sortedByTime.length - 1].timestamp);
+      
+      const intervalMs = getIntervalDuration(period);
+      const result = [];
+      const existingTimestamps = new Map();
+      
+      // Create a map of existing data points by their timestamp
+      sortedByTime.forEach(d => {
+        const ts = parseTimestamp(d.timestamp).getTime();
+        existingTimestamps.set(ts, d);
+      });
+      
+      // Generate all timestamps in the range
+      let currentTime = new Date(firstTimestamp);
+      while (currentTime <= lastTimestamp) {
+        const timeMs = currentTime.getTime();
+        
+        // If we have data for this timestamp, use it; otherwise create a zero entry
+        if (existingTimestamps.has(timeMs)) {
+          result.push(existingTimestamps.get(timeMs));
+        } else {
+          result.push({
+            timestamp: timeMs,
+            count: 0,
+            avg_duration: 0
+          });
+        }
+        
+        // Move to next interval
+        currentTime = new Date(currentTime.getTime() + intervalMs);
+      }
+      
+      return result;
+    };
+    
     // Create properly formatted labels and data
     // Sort data by timestamp to ensure correct order
-    const sortedData = [...responseTimeData].sort((a, b) => 
-      parseTimestamp(a.timestamp) - parseTimestamp(b.timestamp)
-    );
+    const completeResponseTimeData = generateCompleteTimeSeries(responseTimeData, currentPeriod);
+    console.log("Rails Profiler: Complete response time data with all intervals", completeResponseTimeData);
     
-    // Generate labels and data from sorted array
-    const labels = sortedData.map(d => formatTimestamp(d.timestamp, currentPeriod));
-    const durations = sortedData.map(d => parseFloat(d.avg_duration).toFixed(1));
+    // Generate labels and data from the complete series
+    const labels = completeResponseTimeData.map(d => formatTimestamp(d.timestamp, currentPeriod));
+    const durations = completeResponseTimeData.map(d => parseFloat(d.avg_duration).toFixed(1));
     
     console.log("Rails Profiler: Response time labels", labels);
     console.log("Rails Profiler: Response time durations", durations);
@@ -160,7 +224,7 @@ document.addEventListener('DOMContentLoaded', function() {
             displayColors: false,
             callbacks: {
               title: function(tooltipItems) {
-                const originalDate = parseTimestamp(sortedData[tooltipItems[0].dataIndex].timestamp);
+                const originalDate = parseTimestamp(completeResponseTimeData[tooltipItems[0].dataIndex].timestamp);
                 // Show full date and time in tooltip
                 return originalDate.toLocaleString();
               },

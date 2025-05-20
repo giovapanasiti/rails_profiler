@@ -167,8 +167,11 @@ module RailsProfiler
 
       begin
         # Convert times to floats for Redis comparison
-        start_time_float = start_time
-        end_time_float = end_time
+        # This fixes the TypeError with ActiveSupport::TimeWithZone
+        start_time_float = start_time.to_f
+        end_time_float = end_time.to_f
+        
+        puts "[RailsProfiler] Time series for range: #{start_time} to #{end_time} (#{start_time_float} to #{end_time_float})"
         
         # Convert interval to seconds for calculation
         interval_seconds = case interval
@@ -201,20 +204,38 @@ module RailsProfiler
           profile_data = get_profile(id)
           next unless profile_data && profile_data[:status].to_i >= 100
           
-          # Calculate bucket timestamp (floor to nearest interval)
+          # Ensure timestamp is a numeric value
           timestamp = profile_data[:started_at]
-
-          puts "[RailsProfiler] Processing profile with request_id: #{id}, timestamp: #{timestamp}"
+          
+          # Convert to numeric timestamp if it's a string
+          timestamp = case timestamp
+                      when String
+                        # Try to parse as float first, then as Time
+                        begin
+                          # If it's a numeric string like "1621234567.123"
+                          Float(timestamp) rescue Time.parse(timestamp).to_f
+                        rescue
+                          # If all conversion attempts fail, use current time
+                          Time.now.to_f
+                        end
+                      when Integer, Float
+                        timestamp.to_f
+                      else
+                        # For any other type (including Time objects), call to_f
+                        timestamp.to_f
+                      end
+          
+          puts "[RailsProfiler] Processing profile with request_id: #{id}, timestamp: #{timestamp} (#{timestamp.class})"
           
           # Special handling for day view to ensure we bucket by hour properly
           if is_day_view
-            # Parse the date and truncate to hour
-            time = Time.at(timestamp)
+            # Parse the date and truncate to hour - ensure numeric timestamp
+            time = Time.at(timestamp.to_f)
             # Create a bucket time that's aligned to the hour
             bucket_time = Time.new(time.year, time.month, time.day, time.hour).to_i
           else
-            # Normal bucketing for other intervals
-            bucket_time = (timestamp.to_i / interval_seconds) * interval_seconds
+            # Normal bucketing for other intervals - ensure numeric timestamp
+            bucket_time = (timestamp.to_f / interval_seconds) * interval_seconds
           end
           
           # Initialize the bucket if needed
@@ -227,9 +248,9 @@ module RailsProfiler
           
           # Add profile data to bucket
           time_buckets[bucket_time][:count] += 1
-          time_buckets[bucket_time][:total_duration] += profile_data[:duration]
-          time_buckets[bucket_time][:total_query_count] += profile_data[:query_count]
-          time_buckets[bucket_time][:total_query_time] += profile_data[:total_query_time]
+          time_buckets[bucket_time][:total_duration] += profile_data[:duration].to_f
+          time_buckets[bucket_time][:total_query_count] += profile_data[:query_count].to_i
+          time_buckets[bucket_time][:total_query_time] += profile_data[:total_query_time].to_f
         end
         
         # Fill in missing buckets in the time range
@@ -280,6 +301,8 @@ module RailsProfiler
         
         # Sort by timestamp
         sorted_result = result.sort_by { |item| item[:timestamp] }
+        
+        puts "Time series data: #{sorted_result.inspect}"
         
         # Log for debugging
         puts "[RailsProfiler] Generated #{sorted_result.size} time buckets for chart"
