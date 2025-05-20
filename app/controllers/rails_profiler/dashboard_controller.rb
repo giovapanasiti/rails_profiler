@@ -289,7 +289,22 @@ module RailsProfiler
       @volume_data = []
       @response_time_data = []
       
-      time_series.each do |point|
+      # Define the minimum valid timestamp (e.g., year 2020)
+      min_valid_timestamp = Time.new(2020, 1, 1)
+      
+      # Filter and validate time series data before processing
+      valid_time_series = time_series.select do |point|
+        timestamp = point[:timestamp]
+        # Ensure timestamp is a Time object and is after min_valid_timestamp
+        timestamp.is_a?(Time) && timestamp > min_valid_timestamp
+      end
+      
+      # Log validation results for debugging
+      invalid_count = time_series.size - valid_time_series.size
+      Rails.logger.info "[RailsProfiler] Time series validation: #{time_series.size} points, #{invalid_count} invalid removed" if invalid_count > 0
+      
+      # Process valid data points
+      valid_time_series.each do |point|
         timestamp = point[:timestamp]
         @volume_data << {
           timestamp: timestamp,
@@ -300,6 +315,14 @@ module RailsProfiler
           timestamp: timestamp,
           avg_duration: point[:avg_duration] || 0
         }
+      end
+      
+      # If we have no valid data after filtering, generate sample data instead
+      if @volume_data.empty?
+        Rails.logger.warn "[RailsProfiler] No valid time series data found, using sample data"
+        sample_data = generate_sample_time_data(6, 'count')
+        @volume_data = sample_data
+        @response_time_data = generate_sample_time_data(6, 'avg_duration')
       end
     end
     

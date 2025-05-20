@@ -2,8 +2,8 @@
   <div class="card-header d-flex justify-content-between align-items-center">
     <h2 class="card-title mb-0">Response Time</h2>
     <div class="chart-legend d-flex align-items-center">
-      <span class="legend-indicator" style="background-color: rgba(246, 153, 63, 0.8);"></span>
-      <span class="legend-text">Avg. Response Time (ms)</span>
+      <span class="legend-indicator" style="background-color: rgba(245, 158, 11, 0.8);"></span>
+      <span class="legend-text">Avg Response Time (ms)</span>
     </div>
   </div>
   <div class="card-body">
@@ -24,25 +24,53 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Format dates based on selected period
     const currentPeriod = '<%= params[:period] || "day" %>';
-    const formatTimestamp = (timestamp, period) => {
-      const date = new Date(timestamp);
+    
+    // Helper to ensure timestamp is properly converted to JS Date
+    const parseTimestamp = (timestamp) => {
+      // If timestamp is a number and small enough to be in seconds (Ruby standard)
+      // then convert to milliseconds (JavaScript standard)
+      if (typeof timestamp === 'number' || !isNaN(Number(timestamp))) {
+        const numericTimestamp = Number(timestamp);
+        // If timestamp is likely in seconds (before year 2100)
+        if (numericTimestamp < 4102444800) { // 2100-01-01 in seconds
+          return new Date(numericTimestamp * 1000);
+        }
+        return new Date(numericTimestamp);
+      }
       
+      // Try parsing as ISO string
+      return new Date(timestamp);
+    };
+    
+    const formatTimestamp = (timestamp, period) => {
+      // Parse the timestamp correctly
+      const date = parseTimestamp(timestamp);
+      
+      // Format based on period
       switch(period) {
         case 'hour':
           return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         case 'week':
-          return date.toLocaleDateString([], { weekday: 'short', day: 'numeric' });
+          // Return day name (Mon, Tue, etc.)
+          return date.toLocaleDateString([], { weekday: 'short' });
         default: // 'day'
-          return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          // Just return hours for day view (less crowded)
+          return date.toLocaleTimeString([], { hour: '2-digit' });
       }
     };
     
     // Create properly formatted labels and data
-    const labels = responseTimeData.map(d => formatTimestamp(d.timestamp, currentPeriod));
-    const responseTimes = responseTimeData.map(d => d.avg_duration);
+    // Sort data by timestamp to ensure correct order
+    const sortedData = [...responseTimeData].sort((a, b) => 
+      parseTimestamp(a.timestamp) - parseTimestamp(b.timestamp)
+    );
+    
+    // Generate labels and data from sorted array
+    const labels = sortedData.map(d => formatTimestamp(d.timestamp, currentPeriod));
+    const durations = sortedData.map(d => parseFloat(d.avg_duration).toFixed(1));
     
     console.log("Rails Profiler: Response time labels", labels);
-    console.log("Rails Profiler: Response times", responseTimes);
+    console.log("Rails Profiler: Response time durations", durations);
     
     // Check if canvas element exists
     const canvas = document.getElementById('responseTimeChart');
@@ -58,16 +86,16 @@ document.addEventListener('DOMContentLoaded', function() {
       data: {
         labels: labels,
         datasets: [{
-          label: 'Avg. Response Time (ms)',
-          data: responseTimes,
-          backgroundColor: 'rgba(246, 153, 63, 0.1)',
-          borderColor: 'rgba(246, 153, 63, 1)',
+          label: 'Average Response Time (ms)',
+          data: durations,
+          backgroundColor: 'rgba(245, 158, 11, 0.1)',
+          borderColor: 'rgba(245, 158, 11, 0.8)',
           borderWidth: 2,
-          pointRadius: 4,
-          pointHoverRadius: 6,
-          pointBackgroundColor: 'rgba(246, 153, 63, 1)',
-          fill: true,
-          tension: 0.2
+          pointBackgroundColor: 'rgba(245, 158, 11, 1)',
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          tension: 0.3,
+          fill: true
         }]
       },
       options: {
@@ -88,6 +116,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 weight: 'normal'
               },
               padding: { top: 10 }
+            },
+            ticks: {
+              // Limit the number of ticks if there are many data points
+              maxTicksLimit: currentPeriod === 'week' ? 7 : 12,
+              autoSkip: true
             }
           },
           y: {
@@ -104,6 +137,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 weight: 'normal'
               },
               padding: { bottom: 10 }
+            },
+            ticks: {
+              callback: function(value) {
+                return value + ' ms';
+              }
             }
           }
         },
@@ -122,10 +160,12 @@ document.addEventListener('DOMContentLoaded', function() {
             displayColors: false,
             callbacks: {
               title: function(tooltipItems) {
-                return tooltipItems[0].label;
+                const originalDate = parseTimestamp(sortedData[tooltipItems[0].dataIndex].timestamp);
+                // Show full date and time in tooltip
+                return originalDate.toLocaleString();
               },
               label: function(context) {
-                return `${context.parsed.y.toFixed(1)} ms`;
+                return `Response time: ${context.parsed.y} ms`;
               }
             }
           }

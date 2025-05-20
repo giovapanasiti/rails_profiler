@@ -177,6 +177,12 @@ module RailsProfiler
                           else
                             5.minutes.to_i # Default interval
                           end
+                          
+        # Detect if we're working with a 'day' view (1 hour intervals)
+        is_day_view = interval_seconds == 1.hour.to_i
+
+        # Log the interval we're using
+        puts "[RailsProfiler] Time series using interval of #{interval_seconds} seconds (is_day_view: #{is_day_view})"
 
         # Get all profile IDs within the time range using Redis ZRANGEBYSCORE
         profile_ids = redis.zrangebyscore(
@@ -184,6 +190,8 @@ module RailsProfiler
           start_time_float, 
           end_time_float
         )
+        
+        puts "[RailsProfiler] Found #{profile_ids.size} profiles in time range"
         
         # Initialize buckets for time series data
         time_buckets = {}
@@ -195,7 +203,17 @@ module RailsProfiler
           
           # Calculate bucket timestamp (floor to nearest interval)
           timestamp = profile_data[:started_at].to_f
-          bucket_time = (timestamp.to_i / interval_seconds) * interval_seconds
+          
+          # Special handling for day view to ensure we bucket by hour properly
+          if is_day_view
+            # Parse the date and truncate to hour
+            time = Time.at(timestamp)
+            # Create a bucket time that's aligned to the hour
+            bucket_time = Time.new(time.year, time.month, time.day, time.hour).to_i
+          else
+            # Normal bucketing for other intervals
+            bucket_time = (timestamp.to_i / interval_seconds) * interval_seconds
+          end
           
           # Initialize the bucket if needed
           time_buckets[bucket_time] ||= { 
@@ -213,16 +231,34 @@ module RailsProfiler
         end
         
         # Fill in missing buckets in the time range
-        current_time = start_time_float.to_i
-        while current_time <= end_time_float.to_i
-          bucket_time = (current_time / interval_seconds) * interval_seconds
-          time_buckets[bucket_time] ||= { 
-            count: 0, 
-            total_duration: 0, 
-            total_query_count: 0, 
-            total_query_time: 0 
-          }
-          current_time += interval_seconds
+        if is_day_view
+          # For day view, ensure we have all hours represented
+          current_time = Time.at(start_time_float)
+          end_datetime = Time.at(end_time_float)
+          
+          while current_time <= end_datetime
+            bucket_time = Time.new(current_time.year, current_time.month, current_time.day, current_time.hour).to_i
+            time_buckets[bucket_time] ||= { 
+              count: 0, 
+              total_duration: 0, 
+              total_query_count: 0, 
+              total_query_time: 0 
+            }
+            current_time += 1.hour
+          end
+        else
+          # Standard interval bucketing for other views
+          current_time = start_time_float.to_i
+          while current_time <= end_time_float.to_i
+            bucket_time = (current_time / interval_seconds) * interval_seconds
+            time_buckets[bucket_time] ||= { 
+              count: 0, 
+              total_duration: 0, 
+              total_query_count: 0, 
+              total_query_time: 0 
+            }
+            current_time += interval_seconds
+          end
         end
         
         # Convert to array format and calculate averages
@@ -241,7 +277,12 @@ module RailsProfiler
         end
         
         # Sort by timestamp
-        result.sort_by { |item| item[:timestamp] }
+        sorted_result = result.sort_by { |item| item[:timestamp] }
+        
+        # Log for debugging
+        puts "[RailsProfiler] Generated #{sorted_result.size} time buckets for chart"
+        
+        sorted_result
       rescue => e
         puts "[RailsProfiler] Redis error getting time series data: #{e.class.name} - #{e.message}"
         puts e.backtrace.join("\n")
