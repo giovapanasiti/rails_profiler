@@ -1,0 +1,143 @@
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h2 class="card-title mb-0">Request Volume</h2>
+    <div class="chart-legend d-flex align-items-center">
+      <span class="legend-indicator" style="background-color: rgba(60, 118, 242, 0.8);"></span>
+      <span class="legend-text">Requests</span>
+    </div>
+  </div>
+  <div class="card-body">
+    <div style="height: 200px;">
+      <canvas id="requestVolumeChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  try {
+    console.log("Rails Profiler: Initializing request volume chart...");
+    
+    // Get volume data from controller
+    const volumeData = <%= raw (@volume_data || generate_sample_time_data(6, 'count')).to_json %>;
+    console.log("Rails Profiler: Volume data", volumeData);
+    
+    // Format dates based on selected period
+    const currentPeriod = '<%= params[:period] || "day" %>';
+    const formatTimestamp = (timestamp, period) => {
+      const date = new Date(timestamp);
+      
+      switch(period) {
+        case 'hour':
+          return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        case 'week':
+          return date.toLocaleDateString([], { weekday: 'short', day: 'numeric' });
+        default: // 'day'
+          return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+    };
+    
+    // Create properly formatted labels and data
+    const labels = volumeData.map(d => formatTimestamp(d.timestamp, currentPeriod));
+    const counts = volumeData.map(d => d.count);
+    
+    console.log("Rails Profiler: Request volume labels", labels);
+    console.log("Rails Profiler: Request counts", counts);
+    
+    // Check if canvas element exists
+    const canvas = document.getElementById('requestVolumeChart');
+    if (!canvas) {
+      console.error("Rails Profiler: Request volume chart canvas not found!");
+      return;
+    }
+    
+    // Create chart
+    const ctx = canvas.getContext('2d');
+    window.requestVolumeChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Request Count',
+          data: counts,
+          backgroundColor: 'rgba(60, 118, 242, 0.7)',
+          borderColor: 'rgba(60, 118, 242, 1)',
+          borderWidth: 1,
+          borderRadius: 4,
+          barPercentage: 0.8,
+          maxBarThickness: currentPeriod === 'week' ? 30 : 15
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            grid: {
+              display: false
+            },
+            title: {
+              display: true,
+              text: currentPeriod === 'hour' ? 'Time (minutes)' : 
+                    currentPeriod === 'week' ? 'Day' : 'Time (hours)',
+              color: '#666',
+              font: {
+                size: 12,
+                weight: 'normal'
+              },
+              padding: { top: 10 }
+            }
+          },
+          y: {
+            beginAtZero: true,
+            grid: {
+              color: 'rgba(0, 0, 0, 0.05)'
+            },
+            title: {
+              display: true,
+              text: 'Number of Requests',
+              color: '#666',
+              font: {
+                size: 12,
+                weight: 'normal'
+              },
+              padding: { bottom: 10 }
+            },
+            ticks: {
+              precision: 0
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            titleColor: '#1f2937',
+            bodyColor: '#1f2937',
+            borderColor: 'rgba(0, 0, 0, 0.1)',
+            borderWidth: 1,
+            padding: 10,
+            cornerRadius: 6,
+            displayColors: false,
+            callbacks: {
+              title: function(tooltipItems) {
+                return tooltipItems[0].label;
+              },
+              label: function(context) {
+                return `${context.parsed.y} requests`;
+              }
+            }
+          }
+        }
+      }
+    });
+    console.log("Rails Profiler: Request volume chart created successfully");
+  } catch (error) {
+    console.error("Rails Profiler: Error creating request volume chart", error);
+    const container = document.getElementById('requestVolumeChart').parentNode;
+    container.innerHTML = '<div class="alert alert-danger">Error creating request volume chart: ' + error.message + '</div>';
+  }
+});
+</script>

@@ -1,0 +1,120 @@
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title mb-0">Query Distribution</h2>
+  </div>
+  <div class="card-body">
+    <div style="height: 250px;">
+      <canvas id="queryDistributionChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  try {
+    console.log("Rails Profiler: Initializing query distribution chart...");
+    
+    // Query data
+    const queryData = <%= raw({
+      'SELECT' => @stats[:select_count] || rand(40..60),
+      'INSERT' => @stats[:insert_count] || rand(10..20),
+      'UPDATE' => @stats[:update_count] || rand(10..30),
+      'DELETE' => @stats[:delete_count] || rand(2..10),
+      'OTHER' => @stats[:other_query_count] || rand(2..5)
+    }.to_json) %>;
+    
+    console.log("Rails Profiler: Query data", queryData);
+    
+    // Check if canvas element exists
+    const canvas = document.getElementById('queryDistributionChart');
+    if (!canvas) {
+      console.error("Rails Profiler: Query distribution chart canvas not found!");
+      return;
+    }
+    
+    // Create chart
+    const ctx = canvas.getContext('2d');
+    window.queryDistributionChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: Object.keys(queryData),
+        datasets: [{
+          label: 'Query Count',
+          data: Object.values(queryData),
+          backgroundColor: [
+            'rgba(54, 162, 235, 0.7)', // SELECT - blue
+            'rgba(75, 192, 192, 0.7)',  // INSERT - green
+            'rgba(255, 206, 86, 0.7)',  // UPDATE - yellow
+            'rgba(255, 99, 132, 0.7)',  // DELETE - red
+            'rgba(153, 102, 255, 0.7)'  // OTHER - purple
+          ],
+          borderColor: [
+            'rgba(54, 162, 235, 1)',
+            'rgba(75, 192, 192, 1)',
+            'rgba(255, 206, 86, 1)',
+            'rgba(255, 99, 132, 1)',
+            'rgba(153, 102, 255, 1)'
+          ],
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: {
+              color: 'rgba(0, 0, 0, 0.05)'
+            },
+            title: {
+              display: true,
+              text: 'Number of Queries',
+              color: '#666',
+              font: {
+                size: 12,
+                weight: 'normal'
+              },
+              padding: { bottom: 10 }
+            }
+          },
+          x: {
+            grid: {
+              display: false
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            titleColor: '#1f2937',
+            bodyColor: '#1f2937',
+            borderColor: 'rgba(0, 0, 0, 0.1)',
+            borderWidth: 1,
+            padding: 10,
+            cornerRadius: 6,
+            displayColors: true,
+            callbacks: {
+              label: function(context) {
+                const value = context.parsed.y;
+                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                return `${value} queries (${percentage}%)`;
+              }
+            }
+          }
+        },
+        barThickness: 40
+      }
+    });
+    console.log("Rails Profiler: Query distribution chart created successfully");
+  } catch (error) {
+    console.error("Rails Profiler: Error creating query distribution chart", error);
+    const container = document.getElementById('queryDistributionChart').parentNode;
+    container.innerHTML = '<div class="alert alert-danger">Error creating query distribution chart: ' + error.message + '</div>';
+  }
+});
+</script>

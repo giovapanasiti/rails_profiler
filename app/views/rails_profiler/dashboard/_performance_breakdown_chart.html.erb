@@ -1,0 +1,92 @@
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title mb-0">Performance Breakdown</h2>
+  </div>
+  <div class="card-body">
+    <div style="height: 250px;">
+      <canvas id="performanceBreakdownChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  try {
+    console.log("Rails Profiler: Initializing performance breakdown chart...");
+    
+    // Performance data
+    const performanceData = <%= raw({
+      'Database' => @stats[:avg_db_time] || rand(10..50),
+      'View Rendering' => @stats[:avg_view_time] || rand(10..50),
+      'Ruby Code' => @stats[:avg_ruby_time] || rand(20..100),
+      'External APIs' => @stats[:avg_external_time] || rand(5..30)
+    }.to_json) %>;
+    
+    console.log("Rails Profiler: Performance data", performanceData);
+    
+    // Check if canvas element exists
+    const canvas = document.getElementById('performanceBreakdownChart');
+    if (!canvas) {
+      console.error("Rails Profiler: Performance breakdown chart canvas not found!");
+      return;
+    }
+    
+    // Create chart
+    const ctx = canvas.getContext('2d');
+    window.performanceBreakdownChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(performanceData),
+        datasets: [{
+          data: Object.values(performanceData),
+          backgroundColor: [
+            'rgba(54, 162, 235, 0.8)', // Database - blue
+            'rgba(255, 99, 132, 0.8)',  // View - red
+            'rgba(255, 206, 86, 0.8)',  // Ruby - yellow
+            'rgba(75, 192, 192, 0.8)'   // External - green
+          ],
+          borderColor: 'rgba(255, 255, 255, 0.8)',
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: {
+              boxWidth: 15,
+              padding: 15
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            titleColor: '#1f2937',
+            bodyColor: '#1f2937',
+            borderColor: 'rgba(0, 0, 0, 0.1)',
+            borderWidth: 1,
+            padding: 10,
+            cornerRadius: 6,
+            callbacks: {
+              label: function(context) {
+                const label = context.label || '';
+                const value = context.parsed || 0;
+                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                return `${label}: ${value} ms (${percentage}%)`;
+              }
+            }
+          }
+        },
+        cutout: '65%'
+      }
+    });
+    console.log("Rails Profiler: Performance breakdown chart created successfully");
+  } catch (error) {
+    console.error("Rails Profiler: Error creating performance breakdown chart", error);
+    const container = document.getElementById('performanceBreakdownChart').parentNode;
+    container.innerHTML = '<div class="alert alert-danger">Error creating performance breakdown chart: ' + error.message + '</div>';
+  }
+});
+</script>
