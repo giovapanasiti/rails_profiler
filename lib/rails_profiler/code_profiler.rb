@@ -160,8 +160,23 @@ module RailsProfiler
             # Update the render method to properly handle all argument types
             # We support all combinations of arguments that Rails itself supports
             def render(*args, **kwargs, &block)
-              template_path = virtual_path || identifier
-              RailsProfiler::CodeProfiler.profile("Render: #{template_path}") do
+              # Get the full template path - use identifier (absolute path) as the primary source
+              # Instead of just the template name, this will capture the full application path
+              full_path = identifier
+              
+              # Clean up the path to make it more readable
+              # Remove the application root path if present to show paths relative to the app
+              app_root = Rails.root.to_s if defined?(Rails.root)
+              if app_root && full_path.start_with?(app_root)
+                relative_path = full_path.sub(app_root, '')
+                template_name = "#{relative_path} (#{virtual_path || 'unknown'})"
+              else
+                # Fallback to using the virtual_path (template path relative to views directory)
+                # or full identifier if that's not available
+                template_name = virtual_path || full_path
+              end
+              
+              RailsProfiler::CodeProfiler.profile("Render: #{template_name}") do
                 if kwargs.empty?
                   render_without_profiling(*args, &block)
                 else

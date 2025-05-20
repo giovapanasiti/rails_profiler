@@ -86,12 +86,28 @@ module RailsProfiler
     def add_event(event_data)
       @events << event_data
       
-      # Track view rendering hotspots
+      # Track view rendering hotspots - use the full template path instead of just the filename
       if event_data[:category] == 'view'
-        view_name = event_data[:name].to_s.split(' ').last
-        @hotspots[:views][view_name] ||= { count: 0, total_time: 0 }
-        @hotspots[:views][view_name][:count] += 1
-        @hotspots[:views][view_name][:total_time] += event_data[:duration]
+        # Extract the full identifier path from the event name if available
+        if event_data[:name].to_s.start_with?('Render ') && event_data[:identifier].present?
+          view_path = event_data[:identifier]
+          
+          # Make the path relative to the app root if possible for cleaner presentation
+          if defined?(Rails.root) && view_path.start_with?(Rails.root.to_s)
+            view_path = view_path.sub(Rails.root.to_s, '')
+          end
+          
+          # Create or update the view in the hotspots collection
+          @hotspots[:views][view_path] ||= { count: 0, total_time: 0 }
+          @hotspots[:views][view_path][:count] += 1
+          @hotspots[:views][view_path][:total_time] += event_data[:duration]
+        else
+          # Fallback to the existing behavior if we can't get the full path
+          view_name = event_data[:name].to_s.split(' ').last
+          @hotspots[:views][view_name] ||= { count: 0, total_time: 0 }
+          @hotspots[:views][view_name][:count] += 1
+          @hotspots[:views][view_name][:total_time] += event_data[:duration]
+        end
       end
     end
     
@@ -322,7 +338,8 @@ module RailsProfiler
           category: "view",
           start: event.time.to_f,
           finish: event.end.to_f,
-          duration: event.duration
+          duration: event.duration,
+          identifier: event.payload[:identifier] # Add the full template path
         })
       end
       
@@ -335,7 +352,8 @@ module RailsProfiler
           category: "view",
           start: event.time.to_f,
           finish: event.end.to_f,
-          duration: event.duration
+          duration: event.duration,
+          identifier: event.payload[:identifier] # Add the full template path
         })
       end
       
@@ -402,8 +420,13 @@ module RailsProfiler
     
     # Extract top items from a hash based on a specific value key
     def top_items_from_hash(hash, value_key, limit)
+      # For views, make sure we're using the full path as the name
       hash.map do |key, data|
-        { name: key, value: data[value_key], data: data }
+        {
+          name: key,   # This is the full template path when coming from @hotspots[:views]
+          value: data[value_key],
+          data: data
+        }
       end.sort_by { |item| -item[:value] }.take(limit)
     end
   end

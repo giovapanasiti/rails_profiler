@@ -149,7 +149,7 @@
             <table class="hotspot-table">
               <thead>
                 <tr>
-                  <th>Template</th>
+                  <th>Template Path</th>
                   <th>Render Count</th>
                   <th>Total Time</th>
                   <th>Avg Time</th>
@@ -158,7 +158,10 @@
               <tbody>
                 <% @hotspots[:views].each do |view| %>
                   <tr>
-                    <td class="view-name"><%= view[:name] %></td>
+                    <td class="view-path" title="<%= view[:name] %>">
+                      <i class="fas fa-file-code text-muted mr-1"></i>
+                      <%= view[:name] %>
+                    </td>
                     <td><%= view[:data][:count] %></td>
                     <td><%= view[:value].round(2) %> ms</td>
                     <td><%= (view[:value] / view[:data][:count]).round(2) %> ms</td>
