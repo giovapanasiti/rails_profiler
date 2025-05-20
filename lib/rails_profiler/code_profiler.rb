@@ -74,7 +74,7 @@ module RailsProfiler
           method_type = determine_method_type(file_path, method_name, name)
           
           # Record profiling data
-          profiler.add_code_profile({
+          profiler.add_method_profile({
             name: name,
             method_name: method_name,
             method_type: method_type,

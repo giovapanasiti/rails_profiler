@@ -75,15 +75,36 @@ module RailsProfiler
         url = RailsProfiler.config.redis_url
         puts "[RailsProfiler] Redis: Connecting to Redis at: #{url}"
         begin
-          # Simple initialization without any extra options to maximize compatibility
+          # Simple initialization with only the URL to maximize compatibility
+          # This will use our patched Redis.new method
           client = Redis.new(url: url)
-          # Test the connection
-          client.ping
-          puts "[RailsProfiler] Redis: Successfully connected to Redis"
-          client
+          
+          # If client is nil, our patched method caught an error and returned nil
+          if client.nil?
+            puts "[RailsProfiler] Redis: Connection failed, patched Redis.new returned nil"
+            return nil
+          end
+          
+          # Test the connection with a simple ping
+          begin
+            client.ping
+            puts "[RailsProfiler] Redis: Successfully connected to Redis"
+            client
+          rescue => e
+            error_type = e.class.name
+            puts "[RailsProfiler] Redis: Ping test failed: #{error_type} - #{e.message}"
+            puts e.backtrace.join("\n") if e.backtrace
+            
+            # If ping fails, disable Redis and return nil
+            if defined?(RailsProfiler.config) && RailsProfiler.config.respond_to?(:disable_redis!)
+              RailsProfiler.config.disable_redis!
+            end
+            nil
+          end
         rescue => e
-          puts "[RailsProfiler] Redis: Connection error: #{e.class.name} - #{e.message}"
-          puts e.backtrace.join("\n")
+          error_type = e.class.name
+          puts "[RailsProfiler] Redis: Connection error: #{error_type} - #{e.message}"
+          puts e.backtrace.join("\n") if e.backtrace
           # Instead of raising error, return nil so we fail gracefully
           nil
         end

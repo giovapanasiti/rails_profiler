@@ -144,9 +144,9 @@ module RailsProfiler
       @segments << { name: "Ruby", duration: @ruby_time, percentage: ruby_percentage, color: "#9B59B6" }
     end
 
-    def finish(status, duration = nil)
-
-      return if status < 100
+    def finish(status = nil, duration = nil)
+      # Handle case when no status is provided
+      return if status.nil? || status < 100
 
       total_duration = duration || calculate_duration
       query_count = @queries.size
@@ -196,7 +196,9 @@ module RailsProfiler
       Storage.store_profile(data)
     end
     
-    def add_code_profile(data)
+    # This is a duplicate method with a different signature than the one above
+    # Renaming to add_method_profile to avoid conflicts
+    def add_method_profile(data)
       method_name = data[:name]
       
       # Create or update the code profile
@@ -430,6 +432,21 @@ module RailsProfiler
           data: data
         }
       end.sort_by { |item| -item[:value] }.take(limit)
+    end
+    
+    # Add a simple profile entry - used by RailsProfiler.profile method
+    def add_profile(name:, duration:)
+      # Create a simplified profile entry
+      profile_data = {
+        name: name,
+        duration: duration,
+        exclusive_duration: duration,
+        method_name: name.split(':').last,
+        method_type: 'custom'
+      }
+      
+      # Use the existing add_code_profile method to record it
+      add_code_profile(profile_data)
     end
   end
 end
